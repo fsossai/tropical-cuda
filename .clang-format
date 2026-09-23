@@ -1,3 +1,4 @@
+# Requires clang-format 20 or newer.
 BasedOnStyle: LLVM
 UseTab: Never
 ColumnLimit: 100
@@ -5,3 +6,4 @@ BreakBeforeBraces: Attach
 PointerAlignment: Left
 SortIncludes: CaseSensitive
 SpaceBeforeParens: ControlStatements
+WrapNamespaceBodyWithEmptyLines: Always
