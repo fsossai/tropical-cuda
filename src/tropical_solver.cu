@@ -246,3 +246,17 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
 
   return result;
 }
+
+// Reserve the approximate SSSP entry point until its GPU backend is implemented.
+std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
+                                         uint32_t repetitions,
+                                         std::optional<uint32_t> max_iterations) {
+  if (graph.vertex_count == 0 || source >= graph.vertex_count || repetitions == 0 ||
+      graph.row_offsets.size() != static_cast<size_t>(graph.vertex_count) + 1 ||
+      graph.column_indices.size() != graph.weights.size() ||
+      (max_iterations && *max_iterations == 0)) {
+    throw std::invalid_argument("invalid tropical approximate SSSP inputs");
+  }
+
+  throw std::logic_error("tropical approximate SSSP is not implemented");
+}

@@ -87,7 +87,7 @@ Options parse_options(int argc, char** argv) {
       if (mode == "unit") {
         options.weights = WeightMode::unit;
       } else if (mode == "weighted") {
-        options.weights = WeightMode::weighted;
+        options.weights = WeightMode::file;
       } else {
         throw std::runtime_error("unknown weight mode: " + std::string(mode));
       }
@@ -101,7 +101,7 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--output") {
       options.output_path = std::string(require_value());
     } else {
-      throw std::runtime_error("unknown argument: " + std::string(argument));
+      throw std::runtime_error("unknown option: " + std::string(argument));
     }
   }
 
@@ -142,7 +142,15 @@ int main(int argc, char** argv) {
   ScopedTimer st_total("total");
 
   try {
-    const auto options = parse_options(argc, argv);
+    Options options;
+    try {
+      options = parse_options(argc, argv);
+    } catch (const std::exception& error) {
+      std::cerr << "error: " << error.what() << '\n';
+      print_usage(argv[0]);
+      return 1;
+    }
+
     if (options.algorithm == "cugraph" && options.max_iterations) {
       throw std::runtime_error("--max-iterations is unsupported by cugraph");
     }
@@ -152,7 +160,7 @@ int main(int argc, char** argv) {
     TIMER_STOP();
 
     TIMER_START("parsing");
-    auto edges = parse_graph(contents, options.weights);
+    auto edges = parse_edges(contents, options.weights);
     if (edges.empty()) {
       throw std::runtime_error("graph contains no edges");
     }
@@ -160,23 +168,19 @@ int main(int argc, char** argv) {
     TIMER_STOP();
 
     TIMER_START("csr_build");
-    auto graph = build_csr(edges);
+    auto graph = build_csr(edges, source);
     TIMER_STOP();
 
-    if (source >= graph.num_vertices) {
-      throw std::runtime_error("source vertex is outside the graph");
-    }
-
     std::cout << "graph   : " << options.graph_path << '\n'
-              << "vertices: " << graph.num_vertices << '\n'
-              << "edges   : " << graph.num_edges << '\n'
+              << "vertices: " << graph.vertex_count << '\n'
+              << "edges   : " << graph.column_indices.size() << '\n'
               << "source  : " << source << '\n'
               << "algorithm: " << options.algorithm << '\n';
 
     if (options.algorithm == "tropical_exact" || options.algorithm == "tropical_apx") {
       Stopwatch sw_transpose("transpose", /*stats=*/false);
       ScopedTimer st_transpose(sw_transpose);
-      graph = transpose_csr(graph);
+      graph = transpose_csr_with_cusparse(graph);
     }
 
     std::vector<float> distances;
@@ -185,7 +189,8 @@ int main(int argc, char** argv) {
       if (options.algorithm == "cugraph") {
         distances = run_cugraph_sssp(graph, source, options.repetitions);
       } else if (options.algorithm == "tropical_exact") {
-        distances = run_tropical_sssp(graph, source, options.repetitions, options.max_iterations);
+        distances =
+            run_tropical_exact_sssp(graph, source, options.repetitions, options.max_iterations);
       } else {
         distances =
             run_tropical_apx_sssp(graph, source, options.repetitions, options.max_iterations);
