@@ -22,17 +22,10 @@
 
 namespace {
 
-Stopwatch sw_total("total", /*stats=*/false);
-Stopwatch sw_file_io("total.file_io", /*stats=*/false);
-Stopwatch sw_parsing("total.parsing", /*stats=*/false);
-Stopwatch sw_csr_build("total.csr_build", /*stats=*/false);
-Stopwatch sw_kernel("total.kernel", /*stats=*/false);
-Stopwatch sw_output("total.output", /*stats=*/false);
-
 struct Options {
   std::string graph_path;
   std::optional<uint32_t> source;
-  std::string algorithm = "exact_spmv";
+  std::string algorithm = "tropical_exact";
   WeightMode weights = WeightMode::unit;
   std::optional<std::string> output_path;
   uint32_t repetitions = 1;
@@ -43,7 +36,7 @@ struct Options {
 void print_usage(const char* program) {
   std::cout << "Usage: " << program << " graph.txt [options]\n"
             << "  --source N             source vertex, default: first edge's source\n"
-            << "  --algorithm NAME       exact_spmv (default), approx_cusparse, gapbs, cugraph\n"
+            << "  --algorithm NAME       tropical_exact (default), tropical_apx, cugraph\n"
             << "  --weights MODE         unit (default) or file\n"
             << "  --output PATH          write cuGraph distances as vertex and distance pairs\n"
             << "  --repetitions N        compute repetitions, default 1\n"
@@ -128,7 +121,7 @@ std::string read_file(const std::string& path) {
 
 // Write one distance per vertex to the requested output file.
 void write_distances(const std::string& path, const std::vector<float>& distances) {
-  ScopedTimer st1(sw_output);
+  ScopedTimer st("total.output");
   std::ofstream output(path);
   if (!output) {
     throw std::runtime_error("cannot open output: " + path);
@@ -154,7 +147,14 @@ void write_distances(const std::string& path, const std::vector<float>& distance
 
 // Run the selected backend and report its results and phase timings.
 int main(int argc, char** argv) {
-  ScopedTimer st1(sw_total);
+  Stopwatch sw_total("total", /*stats=*/false);
+  Stopwatch sw_file_io("total.file_io", /*stats=*/false);
+  Stopwatch sw_parsing("total.parsing", /*stats=*/false);
+  Stopwatch sw_csr_build("total.csr_build", /*stats=*/false);
+  Stopwatch sw_kernel("total.kernel", /*stats=*/false);
+  Stopwatch sw_output("total.output", /*stats=*/false);
+  ScopedTimer st_total(sw_total);
+
   try {
     if (argc == 1 || (argc == 2 && std::string_view(argv[1]) == "--help")) {
       print_usage(argv[0]);
@@ -191,23 +191,8 @@ int main(int argc, char** argv) {
     sw_parsing.stop();
 
     sw_csr_build.start();
-    const auto graph = build_csr(edges, source);
+    auto graph = build_csr(edges, source);
     sw_csr_build.stop();
-
-    std::vector<float> distances;
-    {
-      ScopedTimer st_kernel(sw_kernel);
-      if (options.algorithm == "cugraph") {
-        distances = run_cugraph_sssp(graph, source, options.repetitions);
-      } else if (options.algorithm == "tropical_exact") {
-        distances =
-            run_tropical_exact_sssp(graph, source, options.repetitions, options.max_iterations);
-      }
-
-      if (options.output_path) {
-        write_distances(*options.output_path, distances);
-      }
-    }
 
     std::cout << "graph          : " << options.graph_path << '\n'
               << "vertices       : " << graph.vertex_count << '\n'
@@ -223,7 +208,24 @@ int main(int argc, char** argv) {
               << (options.max_iterations ? std::to_string(*options.max_iterations) : "auto")
               << '\n';
 
+    if (options.algorithm == "tropical_exact" || options.algorithm == "tropical_apx") {
+      ScopedTimer st("total.transpose");
+      graph = transpose_csr_with_cusparse(graph);
+    }
+
+    std::vector<float> distances;
+    {
+      ScopedTimer st_kernel(sw_kernel);
+      if (options.algorithm == "cugraph") {
+        distances = run_cugraph_sssp(graph, source, options.repetitions);
+      } else if (options.algorithm == "tropical_exact") {
+        distances =
+            run_tropical_exact_sssp(graph, source, options.repetitions, options.max_iterations);
+      }
+    }
+
     if (options.output_path) {
+      write_distances(*options.output_path, distances);
       std::cout << "output         : " << *options.output_path;
       if (options.algorithm != "cugraph") {
         std::cout << " (reserved; no distances written)";
@@ -231,15 +233,11 @@ int main(int argc, char** argv) {
       std::cout << '\n';
     }
 
-    if (options.algorithm == "cugraph") {
-      const auto reachable = std::count_if(distances.begin(), distances.end(),
-                                           [](float distance) { return std::isfinite(distance); });
-      std::cout << "reachable      : " << reachable << '\n'
-                << "unreachable    : " << distances.size() - reachable << '\n'
-                << "status         : solved\n";
-    } else {
-      std::cout << "status         : parsed_csr_only\n";
-    }
+    const auto reachable = std::count_if(distances.begin(), distances.end(),
+                                         [](float distance) { return std::isfinite(distance); });
+    std::cout << "reachable      : " << reachable << '\n'
+              << "unreachable    : " << distances.size() - reachable << '\n';
+
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "error: " << error.what() << '\n';

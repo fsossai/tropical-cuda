@@ -122,6 +122,7 @@ std::vector<float> run_cugraph_sssp(const CsrGraph& graph, uint32_t source, uint
   Stopwatch sw_compute("total.kernel.compute", /*stats=*/false);
   Paths paths(nullptr, &cugraph_paths_result_free);
   for (uint32_t run = 0; run < repetitions; ++run) {
+    ScopedTimer st("total.kernel.rep");
     paths.reset();
     {
       // Include synchronization so the stopwatch covers GPU work, not just its launch.
