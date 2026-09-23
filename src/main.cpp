@@ -1,12 +1,12 @@
 #include "cugraph_solver.hpp"
 #include "graph.hpp"
+#include "tropical_solver.cuh"
 
 #include <timers/ScopedTimer.hpp>
 
 #include <algorithm>
 #include <charconv>
 #include <cmath>
-#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
@@ -14,7 +14,9 @@
 #include <iterator>
 #include <limits>
 #include <optional>
+#include <stddef.h>
 #include <stdexcept>
+#include <stdint.h>
 #include <string>
 #include <string_view>
 
@@ -29,12 +31,12 @@ Stopwatch sw_output("total.output", /*stats=*/false);
 
 struct Options {
   std::string graph_path;
-  std::optional<std::uint32_t> source;
+  std::optional<uint32_t> source;
   std::string algorithm = "exact_spmv";
   WeightMode weights = WeightMode::unit;
   std::optional<std::string> output_path;
-  std::uint32_t repetitions = 1;
-  std::optional<std::uint32_t> max_iterations;
+  uint32_t repetitions = 1;
+  std::optional<uint32_t> max_iterations;
 };
 
 // Show the command syntax and supported options.
@@ -50,8 +52,8 @@ void print_usage(const char* program) {
             << "The cuGraph solver requires libcugraph; other solvers are not implemented yet.\n";
 }
 
-std::uint32_t parse_number(std::string_view value, const std::string& name, bool allow_zero) {
-  std::uint32_t number = 0;
+uint32_t parse_number(std::string_view value, const std::string& name, bool allow_zero) {
+  uint32_t number = 0;
   const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), number);
   if (error != std::errc{} || end != value.data() + value.size() || (!allow_zero && number == 0)) {
     throw std::runtime_error("invalid value for " + name + ": " + std::string(value));
@@ -92,8 +94,7 @@ Options parse_options(int argc, char** argv) {
     if (flag == "--source") {
       options.source = parse_number(value, flag, true);
     } else if (flag == "--algorithm") {
-      if (value != "exact_spmv" && value != "approx_cusparse" && value != "gapbs" &&
-          value != "cugraph") {
+      if (value != "tropical_exact" && value != "tropical_apx" && value != "cugraph") {
         throw std::runtime_error("unknown algorithm: " + value);
       }
       options.algorithm = value;
@@ -134,7 +135,7 @@ void write_distances(const std::string& path, const std::vector<float>& distance
   }
 
   output << std::setprecision(std::numeric_limits<float>::max_digits10);
-  for (std::size_t vertex = 0; vertex < distances.size(); ++vertex) {
+  for (size_t vertex = 0; vertex < distances.size(); ++vertex) {
     output << vertex << ' ';
     if (std::isinf(distances[vertex])) {
       output << "inf\n";
@@ -186,7 +187,7 @@ int main(int argc, char** argv) {
     if (edges.empty()) {
       throw std::runtime_error("graph contains no edges");
     }
-    const std::uint32_t source = options.source.value_or(edges.front().source);
+    const uint32_t source = options.source.value_or(edges.front().source);
     sw_parsing.stop();
 
     sw_csr_build.start();
@@ -194,10 +195,13 @@ int main(int argc, char** argv) {
     sw_csr_build.stop();
 
     std::vector<float> distances;
-    if (options.algorithm == "cugraph") {
-      {
-        ScopedTimer st_kernel(sw_kernel);
+    {
+      ScopedTimer st_kernel(sw_kernel);
+      if (options.algorithm == "cugraph") {
         distances = run_cugraph_sssp(graph, source, options.repetitions);
+      } else if (options.algorithm == "tropical_exact") {
+        distances =
+            run_tropical_exact_sssp(graph, source, options.repetitions, options.max_iterations);
       }
 
       if (options.output_path) {

@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
-project(tropical_cuda LANGUAGES CXX)
+project(tropical_cuda LANGUAGES CXX CUDA)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+find_package(CUDAToolkit REQUIRED)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -13,25 +14,36 @@ FetchContent_MakeAvailable(timers)
 add_executable(tropical_sssp
   src/main.cpp
   src/graph.cpp
+  src/tropical_solver.cu
 )
-target_compile_features(tropical_sssp PRIVATE cxx_std_17)
+set_target_properties(tropical_sssp PROPERTIES OUTPUT_NAME sssp)
+target_compile_features(tropical_sssp PRIVATE cxx_std_17 cuda_std_17)
 target_include_directories(tropical_sssp PRIVATE ${timers_SOURCE_DIR}/include src)
 
-option(TROPICAL_ENABLE_CUGRAPH "Enable the cuGraph backend when available" ON)
+option(TROPICAL_ENABLE_CUGRAPH "Build the cuGraph backend" ON)
 if(TROPICAL_ENABLE_CUGRAPH)
-  find_package(cugraph CONFIG QUIET)
+  include(cmake/cuGraph.cmake)
+  find_package(cugraph CONFIG REQUIRED)
 endif()
 if(TARGET cugraph::cugraph_c)
-  find_package(CUDAToolkit REQUIRED)
+  set(TROPICAL_CUGRAPH_LINK_LIBS cugraph::cugraph_c CUDA::cudart CUDA::cusolver)
+  find_library(TROPICAL_CUGRAPH_NVJITLINK NAMES libnvJitLink.so.13
+    PATHS "${TROPICAL_CUGRAPH_SITE_PACKAGES}/nvidia/cu13/lib"
+    NO_DEFAULT_PATH)
+  if(TROPICAL_CUGRAPH_NVJITLINK)
+    list(APPEND TROPICAL_CUGRAPH_LINK_LIBS "${TROPICAL_CUGRAPH_NVJITLINK}")
+  endif()
   target_sources(tropical_sssp PRIVATE src/cugraph_solver.cpp)
-  target_link_libraries(tropical_sssp PRIVATE cugraph::cugraph_c CUDA::cudart)
+  if(TROPICAL_CUGRAPH_LIB_DIRS)
+    target_link_directories(tropical_sssp PRIVATE ${TROPICAL_CUGRAPH_LIB_DIRS})
+    target_link_options(tropical_sssp PRIVATE
+      "-Wl,-rpath-link,${TROPICAL_CUGRAPH_LIB_RPATH}"
+      "-Wl,--disable-new-dtags")
+  endif()
+  target_link_libraries(tropical_sssp PRIVATE ${TROPICAL_CUGRAPH_LINK_LIBS})
 else()
   target_sources(tropical_sssp PRIVATE src/cugraph_unavailable.cpp)
-  if(TROPICAL_ENABLE_CUGRAPH)
-    message(STATUS "cuGraph C library not found; cugraph backend unavailable")
-  else()
-    message(STATUS "cuGraph backend disabled")
-  endif()
+  message(STATUS "cuGraph backend disabled; set TROPICAL_ENABLE_CUGRAPH=ON to enable it")
 endif()
 
 include(CTest)
@@ -51,7 +63,13 @@ if(BUILD_TESTING)
     add_executable(cugraph_test tests/cugraph_test.cpp src/graph.cpp src/cugraph_solver.cpp)
     target_compile_features(cugraph_test PRIVATE cxx_std_17)
     target_include_directories(cugraph_test PRIVATE ${timers_SOURCE_DIR}/include src)
-    target_link_libraries(cugraph_test PRIVATE cugraph::cugraph_c CUDA::cudart)
+    if(TROPICAL_CUGRAPH_LIB_DIRS)
+      target_link_directories(cugraph_test PRIVATE ${TROPICAL_CUGRAPH_LIB_DIRS})
+      target_link_options(cugraph_test PRIVATE
+        "-Wl,-rpath-link,${TROPICAL_CUGRAPH_LIB_RPATH}"
+        "-Wl,--disable-new-dtags")
+    endif()
+    target_link_libraries(cugraph_test PRIVATE ${TROPICAL_CUGRAPH_LINK_LIBS})
     add_test(NAME cugraph_test COMMAND cugraph_test)
   endif()
 endif()
