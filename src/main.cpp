@@ -1,24 +1,30 @@
+#include "cugraph_solver.hpp"
 #include "graph.hpp"
 
 #include <timers/ScopedTimer.hpp>
 
+#include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 
 namespace {
+
 Stopwatch sw_total("total", /*stats=*/false);
-Stopwatch sw_arguments("total.arguments", /*stats=*/false);
 Stopwatch sw_file_io("total.file_io", /*stats=*/false);
 Stopwatch sw_parsing("total.parsing", /*stats=*/false);
 Stopwatch sw_csr_build("total.csr_build", /*stats=*/false);
+Stopwatch sw_output("total.output", /*stats=*/false);
 Stopwatch sw_reporting("total.reporting", /*stats=*/false);
 
 struct Options {
@@ -36,11 +42,11 @@ void print_usage(const char* program) {
             << "  --source N             source vertex, default: first edge's source\n"
             << "  --algorithm NAME       exact_spmv (default), approx_cusparse, gapbs, cugraph\n"
             << "  --weights MODE         unit (default) or file\n"
-            << "  --output PATH          reserved for distance output\n"
+            << "  --output PATH          write cuGraph distances as vertex and distance pairs\n"
             << "  --repetitions N        compute repetitions, default 1\n"
             << "  --max-iterations N     iteration cap for iterative solvers\n"
             << "  --help                 show this help\n"
-            << "This build parses the graph and constructs CSR; solvers are not implemented yet.\n";
+            << "The cuGraph solver requires libcugraph; other solvers are not implemented yet.\n";
 }
 
 std::uint32_t parse_number(std::string_view value, const std::string& name, bool allow_zero) {
@@ -114,6 +120,29 @@ std::string read_file(const std::string& path) {
   return contents;
 }
 
+void write_distances(const std::string& path, const std::vector<float>& distances) {
+  ScopedTimer st1(sw_output);
+  std::ofstream output(path);
+  if (!output) {
+    throw std::runtime_error("cannot open output: " + path);
+  }
+
+  output << std::setprecision(std::numeric_limits<float>::max_digits10);
+  for (std::size_t vertex = 0; vertex < distances.size(); ++vertex) {
+    output << vertex << ' ';
+    if (std::isinf(distances[vertex])) {
+      output << "inf\n";
+    } else {
+      output << distances[vertex] << '\n';
+    }
+  }
+
+  output.close();
+  if (!output) {
+    throw std::runtime_error("failed while writing output: " + path);
+  }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -123,9 +152,15 @@ int main(int argc, char** argv) {
       print_usage(argv[0]);
       return 0;
     }
-    sw_arguments.start();
     const Options options = parse_options(argc, argv);
-    sw_arguments.stop();
+    if (options.algorithm == "cugraph" && !cugraph_available()) {
+      throw std::runtime_error(
+          "cuGraph backend unavailable; install libcugraph and reconfigure CMake");
+    }
+
+    if (options.algorithm == "cugraph" && options.max_iterations) {
+      throw std::runtime_error("--max-iterations is not supported by cuGraph SSSP");
+    }
 
     sw_file_io.start();
     const auto contents = read_file(options.graph_path);
@@ -143,6 +178,14 @@ int main(int argc, char** argv) {
     const auto graph = build_csr(edges, source);
     sw_csr_build.stop();
 
+    std::vector<float> distances;
+    if (options.algorithm == "cugraph") {
+      distances = run_cugraph_sssp(graph, source, options.repetitions);
+      if (options.output_path) {
+        write_distances(*options.output_path, distances);
+      }
+    }
+
     sw_reporting.start();
     std::cout << "graph          : " << options.graph_path << '\n'
               << "vertices       : " << graph.vertex_count << '\n'
@@ -159,11 +202,22 @@ int main(int argc, char** argv) {
               << '\n';
 
     if (options.output_path) {
-      std::cout << "output         : " << *options.output_path
-                << " (reserved; no distances written)\n";
+      std::cout << "output         : " << *options.output_path;
+      if (options.algorithm != "cugraph") {
+        std::cout << " (reserved; no distances written)";
+      }
+      std::cout << '\n';
     }
 
-    std::cout << "status         : parsed_csr_only\n";
+    if (options.algorithm == "cugraph") {
+      const auto reachable = std::count_if(distances.begin(), distances.end(),
+                                           [](float distance) { return std::isfinite(distance); });
+      std::cout << "reachable      : " << reachable << '\n'
+                << "unreachable    : " << distances.size() - reachable << '\n'
+                << "status         : solved\n";
+    } else {
+      std::cout << "status         : parsed_csr_only\n";
+    }
     sw_reporting.stop();
     return 0;
   } catch (const std::exception& error) {

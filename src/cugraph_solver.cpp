@@ -1,0 +1,172 @@
+#include "cugraph_solver.hpp"
+#include "cuda_check.hpp"
+
+#include <timers/ScopedTimer.hpp>
+
+#include <cugraph_c/array.h>
+#include <cugraph_c/graph.h>
+#include <cugraph_c/resource_handle.h>
+#include <cugraph_c/traversal_algorithms.h>
+
+#include <cstdint>
+#include <limits>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace {
+
+Stopwatch sw_cugraph("total.cugraph", /*stats=*/false);
+Stopwatch sw_setup("total.cugraph.setup", /*stats=*/false);
+Stopwatch sw_sssp("total.cugraph.sssp", /*stats=*/false);
+Stopwatch sw_download("total.cugraph.download", /*stats=*/false);
+
+using Handle = std::unique_ptr<cugraph_resource_handle_t, decltype(&cugraph_free_resource_handle)>;
+using DeviceArray = std::unique_ptr<cugraph_type_erased_device_array_t,
+                                    decltype(&cugraph_type_erased_device_array_free)>;
+using DeviceView = std::unique_ptr<cugraph_type_erased_device_array_view_t,
+                                   decltype(&cugraph_type_erased_device_array_view_free)>;
+using Graph = std::unique_ptr<cugraph_graph_t, decltype(&cugraph_graph_free)>;
+using Paths = std::unique_ptr<cugraph_paths_result_t, decltype(&cugraph_paths_result_free)>;
+
+void check_cugraph(cugraph_error_code_t code, cugraph_error_t* error, const char* operation) {
+  std::string message = operation;
+  if (error != nullptr) {
+    message += ": ";
+    message += cugraph_error_message(error);
+    cugraph_error_free(error);
+  }
+
+  if (code != CUGRAPH_SUCCESS) {
+    throw std::runtime_error(message);
+  }
+}
+
+class InputArray {
+public:
+  InputArray(const cugraph_resource_handle_t* handle, const void* data, std::size_t size,
+             cugraph_data_type_id_t type)
+      : array_(nullptr, &cugraph_type_erased_device_array_free),
+        view_(nullptr, &cugraph_type_erased_device_array_view_free) {
+    cugraph_type_erased_device_array_t* raw_array = nullptr;
+    cugraph_error_t* error = nullptr;
+    const auto code =
+        cugraph_type_erased_device_array_create(handle, size, type, &raw_array, &error);
+    array_.reset(raw_array);
+    check_cugraph(code, error, "cuGraph device allocation");
+
+    view_.reset(cugraph_type_erased_device_array_view(array_.get()));
+    if (!view_) {
+      throw std::runtime_error("cuGraph device array view creation failed");
+    }
+
+    error = nullptr;
+    const auto copy_code = cugraph_type_erased_device_array_view_copy_from_host(
+        handle, view_.get(), reinterpret_cast<const byte_t*>(data), &error);
+    check_cugraph(copy_code, error, "cuGraph host-to-device copy");
+  }
+
+  const cugraph_type_erased_device_array_view_t* view() const { return view_.get(); }
+
+private:
+  DeviceArray array_;
+  DeviceView view_;
+};
+
+} // namespace
+
+bool cugraph_available() { return true; }
+
+std::vector<float> run_cugraph_sssp(const CsrGraph& graph, std::uint32_t source,
+                                    std::uint32_t repetitions) {
+  ScopedTimer st1(sw_cugraph);
+  if (repetitions == 0) {
+    throw std::runtime_error("cuGraph repetitions must be positive");
+  }
+
+  sw_setup.start();
+  Handle handle(cugraph_create_resource_handle(nullptr), &cugraph_free_resource_handle);
+  if (!handle) {
+    throw std::runtime_error("cuGraph resource handle creation failed");
+  }
+
+  if (graph.vertex_count > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()) ||
+      graph.column_indices.size() >
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+    throw std::runtime_error("cuGraph requires 32-bit vertex IDs and CSR offsets");
+  }
+
+  std::vector<std::int32_t> offsets(graph.row_offsets.begin(), graph.row_offsets.end());
+  std::vector<std::int32_t> indices(graph.column_indices.begin(), graph.column_indices.end());
+  InputArray device_offsets(handle.get(), offsets.data(), offsets.size(), INT32);
+  InputArray device_indices(handle.get(), indices.data(), indices.size(), INT32);
+  InputArray device_weights(handle.get(), graph.weights.data(), graph.weights.size(), FLOAT32);
+
+  const cugraph_graph_properties_t properties{FALSE, TRUE};
+  cugraph_graph_t* raw_graph = nullptr;
+  cugraph_error_t* error = nullptr;
+  const auto graph_code = cugraph_graph_create_sg_from_csr(
+      handle.get(), &properties, device_offsets.view(), device_indices.view(),
+      device_weights.view(), nullptr, nullptr, FALSE, FALSE, FALSE, FALSE, &raw_graph, &error);
+  Graph device_graph(raw_graph, &cugraph_graph_free);
+  check_cugraph(graph_code, error, "cuGraph CSR construction");
+  CHECK_CUDA(cudaDeviceSynchronize());
+  sw_setup.stop();
+
+  Paths paths(nullptr, &cugraph_paths_result_free);
+  for (std::uint32_t run = 0; run < repetitions; ++run) {
+    paths.reset();
+    sw_sssp.start();
+    cugraph_paths_result_t* raw_paths = nullptr;
+    error = nullptr;
+    const auto code =
+        cugraph_sssp(handle.get(), device_graph.get(), source, std::numeric_limits<float>::max(),
+                     FALSE, FALSE, &raw_paths, &error);
+    paths.reset(raw_paths);
+    check_cugraph(code, error, "cuGraph SSSP");
+    CHECK_CUDA(cudaDeviceSynchronize());
+    sw_sssp.stop();
+  }
+
+  sw_download.start();
+  DeviceView vertices(cugraph_paths_result_get_vertices(paths.get()),
+                      &cugraph_type_erased_device_array_view_free);
+  DeviceView distances(cugraph_paths_result_get_distances(paths.get()),
+                       &cugraph_type_erased_device_array_view_free);
+  if (!vertices || !distances) {
+    throw std::runtime_error("cuGraph SSSP returned incomplete results");
+  }
+
+  const auto count = cugraph_type_erased_device_array_view_size(vertices.get());
+  if (count != cugraph_type_erased_device_array_view_size(distances.get()) ||
+      cugraph_type_erased_device_array_view_type(vertices.get()) != INT32 ||
+      cugraph_type_erased_device_array_view_type(distances.get()) != FLOAT32) {
+    throw std::runtime_error("cuGraph SSSP returned unexpected result types");
+  }
+
+  std::vector<std::int32_t> vertex_ids(count);
+  std::vector<float> values(count);
+  error = nullptr;
+  const auto vertices_code = cugraph_type_erased_device_array_view_copy_to_host(
+      handle.get(), reinterpret_cast<byte_t*>(vertex_ids.data()), vertices.get(), &error);
+  check_cugraph(vertices_code, error, "cuGraph vertex download");
+  error = nullptr;
+  const auto distances_code = cugraph_type_erased_device_array_view_copy_to_host(
+      handle.get(), reinterpret_cast<byte_t*>(values.data()), distances.get(), &error);
+  check_cugraph(distances_code, error, "cuGraph distance download");
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  std::vector<float> result(graph.vertex_count, std::numeric_limits<float>::infinity());
+  for (std::size_t i = 0; i < count; ++i) {
+    const auto vertex = vertex_ids[i];
+    if (vertex < 0 || static_cast<std::uint64_t>(vertex) >= graph.vertex_count) {
+      throw std::runtime_error("cuGraph SSSP returned an out-of-range vertex");
+    }
+    result[vertex] = values[i] == std::numeric_limits<float>::max()
+                         ? std::numeric_limits<float>::infinity()
+                         : values[i];
+  }
+  sw_download.stop();
+  return result;
+}

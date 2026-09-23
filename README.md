@@ -4,12 +4,16 @@
 This project is an experiment in the performance and accuracy of GPU single-source shortest-path (SSSP) algorithms based on tropical algebra.
 It will compare several variants with different trade-offs, starting with a correct GPU algorithm before introducing approximations.
 
+## cuGraph dependency
+
+The `cugraph` backend requires a separate [RAPIDS libcugraph installation](https://docs.rapids.ai/api/cugraph/legacy/installation/getting_cugraph/). CMake enables it when it finds `cugraph::cugraph_c`.
+
 ## TODO
 
 - [ ] Exact tropical Bellman-Ford with hand-crafted SpMV.
 - [ ] Approximate tropical Bellman-Ford using cuSPARSE.
 - [ ] CPU Multithreaded implementation for based on GAPBS \[Beamer et al.\].
-- [ ] Exact implementation using cuGraph.
+- [x] Exact implementation using cuGraph.
 
 ## Graphs
 
