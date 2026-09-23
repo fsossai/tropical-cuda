@@ -92,6 +92,7 @@ std::vector<float> run_cugraph_sssp(const CsrGraph& graph, uint32_t source, uint
   }
 
   if (graph.vertex_count > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) ||
+      graph.edge_count != graph.column_indices.size() ||
       graph.column_indices.size() > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
     throw std::runtime_error("cuGraph requires 32-bit vertex IDs and CSR offsets");
   }

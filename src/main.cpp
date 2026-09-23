@@ -1,6 +1,8 @@
 #include "cugraph_solver.hpp"
 #include "graph.hpp"
-#include "tropical_solver.cuh"
+#include "tropical_apx.cuh"
+#include "tropical_common.cuh"
+#include "tropical_exact.cuh"
 
 #include <timers/ScopedTimer.hpp>
 
@@ -173,7 +175,7 @@ int main(int argc, char** argv) {
 
     std::cout << "graph   : " << options.graph_path << '\n'
               << "vertices: " << graph.vertex_count << '\n'
-              << "edges   : " << graph.column_indices.size() << '\n'
+              << "edges   : " << graph.edge_count << '\n'
               << "source  : " << source << '\n'
               << "algorithm: " << options.algorithm << '\n';
 

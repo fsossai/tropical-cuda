@@ -1,10 +1,9 @@
-#include "cuda_check.hpp"
-#include "tropical_solver.cuh"
+#include "tropical_common.cuh"
+#include "tropical_exact.cuh"
 #include <timers/ScopedTimer.hpp>
 
 #include <cuda_runtime.h>
 
-#include <algorithm>
 #include <limits>
 #include <math.h>
 #include <stddef.h>
@@ -13,42 +12,6 @@
 #include <vector>
 
 namespace {
-
-// Own a device allocation for one typed array.
-template <typename T> class DeviceBuffer {
-public:
-  explicit DeviceBuffer(size_t count) {
-    void* allocation = nullptr;
-    CHECK_CUDA(cudaMalloc(&allocation, std::max<size_t>(count, 1) * sizeof(T)));
-    data_ = static_cast<T*>(allocation);
-  }
-
-  ~DeviceBuffer() { cudaFree(data_); }
-
-  DeviceBuffer(const DeviceBuffer&) = delete;
-  DeviceBuffer& operator=(const DeviceBuffer&) = delete;
-
-  T* data() const { return data_; }
-
-private:
-  T* data_ = nullptr;
-};
-
-// Own a cuSPARSE handle for the duration of one sparse-matrix operation.
-class CusparseHandle {
-public:
-  CusparseHandle() { CHECK_CUSPARSE(cusparseCreate(&handle_)); }
-
-  ~CusparseHandle() { cusparseDestroy(handle_); }
-
-  CusparseHandle(const CusparseHandle&) = delete;
-  CusparseHandle& operator=(const CusparseHandle&) = delete;
-
-  cusparseHandle_t get() const { return handle_; }
-
-private:
-  cusparseHandle_t handle_ = nullptr;
-};
 
 // Placeholder for one min-plus relaxation step over outgoing CSR rows.
 __global__ void tropical_spmv(const uint32_t* __restrict__ row_offsets,
@@ -106,69 +69,6 @@ __global__ void tropical_spmv(const uint32_t* __restrict__ row_offsets,
 
 } // namespace
 
-CsrGraph transpose_csr_with_cusparse(const CsrGraph& graph) {
-  if (graph.vertex_count == 0 ||
-      graph.row_offsets.size() != static_cast<size_t>(graph.vertex_count) + 1 ||
-      graph.column_indices.size() != graph.weights.size() ||
-      graph.vertex_count > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
-      graph.column_indices.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
-    throw std::invalid_argument("invalid CSR graph for transposition");
-  }
-
-  const int vertex_count = static_cast<int>(graph.vertex_count);
-  const int edge_count = static_cast<int>(graph.column_indices.size());
-  const auto offset_bytes = graph.row_offsets.size() * sizeof(uint32_t);
-  const auto edge_bytes = graph.column_indices.size() * sizeof(uint32_t);
-  const auto weight_bytes = graph.weights.size() * sizeof(float);
-
-  DeviceBuffer<uint32_t> device_offsets(graph.row_offsets.size());
-  DeviceBuffer<uint32_t> device_columns(graph.column_indices.size());
-  DeviceBuffer<float> device_weights(graph.weights.size());
-  DeviceBuffer<uint32_t> device_transpose_offsets(graph.row_offsets.size());
-  DeviceBuffer<uint32_t> device_transpose_columns(graph.column_indices.size());
-  DeviceBuffer<float> device_transpose_weights(graph.weights.size());
-
-  CHECK_CUDA(cudaMemcpy(device_offsets.data(), graph.row_offsets.data(), offset_bytes,
-                        cudaMemcpyHostToDevice));
-  if (edge_count != 0) {
-    CHECK_CUDA(cudaMemcpy(device_columns.data(), graph.column_indices.data(), edge_bytes,
-                          cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemcpy(device_weights.data(), graph.weights.data(), weight_bytes,
-                          cudaMemcpyHostToDevice));
-  }
-
-  CusparseHandle handle;
-  const auto* csr_offsets = reinterpret_cast<const int*>(device_offsets.data());
-  const auto* csr_columns = reinterpret_cast<const int*>(device_columns.data());
-  auto* csc_offsets = reinterpret_cast<int*>(device_transpose_offsets.data());
-  auto* csc_rows = reinterpret_cast<int*>(device_transpose_columns.data());
-  size_t workspace_bytes = 0;
-  CHECK_CUSPARSE(cusparseCsr2cscEx2_bufferSize(
-      handle.get(), vertex_count, vertex_count, edge_count, device_weights.data(), csr_offsets,
-      csr_columns, device_transpose_weights.data(), csc_offsets, csc_rows, CUDA_R_32F,
-      CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO, CUSPARSE_CSR2CSC_ALG1, &workspace_bytes));
-  DeviceBuffer<char> workspace(workspace_bytes);
-  CHECK_CUSPARSE(cusparseCsr2cscEx2(
-      handle.get(), vertex_count, vertex_count, edge_count, device_weights.data(), csr_offsets,
-      csr_columns, device_transpose_weights.data(), csc_offsets, csc_rows, CUDA_R_32F,
-      CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO, CUSPARSE_CSR2CSC_ALG1, workspace.data()));
-
-  CsrGraph transpose;
-  transpose.vertex_count = graph.vertex_count;
-  transpose.row_offsets.resize(graph.row_offsets.size());
-  transpose.column_indices.resize(graph.column_indices.size());
-  transpose.weights.resize(graph.weights.size());
-  CHECK_CUDA(cudaMemcpy(transpose.row_offsets.data(), device_transpose_offsets.data(), offset_bytes,
-                        cudaMemcpyDeviceToHost));
-  if (edge_count != 0) {
-    CHECK_CUDA(cudaMemcpy(transpose.column_indices.data(), device_transpose_columns.data(),
-                          edge_bytes, cudaMemcpyDeviceToHost));
-    CHECK_CUDA(cudaMemcpy(transpose.weights.data(), device_transpose_weights.data(), weight_bytes,
-                          cudaMemcpyDeviceToHost));
-  }
-  return transpose;
-}
-
 std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t source,
                                            uint32_t repetitions,
                                            std::optional<uint32_t> max_iterations) {
@@ -176,6 +76,7 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
 
   if (graph.vertex_count == 0 || source >= graph.vertex_count ||
       graph.row_offsets.size() != static_cast<size_t>(graph.vertex_count) + 1 ||
+      graph.edge_count != graph.column_indices.size() ||
       graph.column_indices.size() != graph.weights.size() ||
       (max_iterations && *max_iterations == 0)) {
     throw std::invalid_argument("invalid tropical SSSP inputs");
@@ -227,7 +128,6 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
     int changed = 1;
 
     for (uint32_t iteration = 0; changed && (iteration < iterations); ++iteration) {
-      ScopedTimer st("kernel.rep.it");
       CHECK_CUDA(cudaMemsetAsync(device_changed.data(), 0, sizeof(int)));
       tropical_spmv<<<blocks, threads_per_block>>>(device_offsets.data(), device_columns.data(),
                                                    device_weights.data(), current, next,
@@ -245,18 +145,4 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
   }
 
   return result;
-}
-
-// Reserve the approximate SSSP entry point until its GPU backend is implemented.
-std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
-                                         uint32_t repetitions,
-                                         std::optional<uint32_t> max_iterations) {
-  if (graph.vertex_count == 0 || source >= graph.vertex_count || repetitions == 0 ||
-      graph.row_offsets.size() != static_cast<size_t>(graph.vertex_count) + 1 ||
-      graph.column_indices.size() != graph.weights.size() ||
-      (max_iterations && *max_iterations == 0)) {
-    throw std::invalid_argument("invalid tropical approximate SSSP inputs");
-  }
-
-  throw std::logic_error("tropical approximate SSSP is not implemented");
 }

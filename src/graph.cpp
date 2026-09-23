@@ -77,6 +77,7 @@ CsrGraph build_csr(const std::vector<Edge>& edges, uint32_t source) {
 
   CsrGraph graph;
   graph.vertex_count = static_cast<uint32_t>(vertex_count);
+  graph.edge_count = static_cast<uint32_t>(edges.size());
   graph.row_offsets.assign(vertex_count + 1, 0);
   graph.column_indices.resize(edges.size());
   graph.weights.resize(edges.size());

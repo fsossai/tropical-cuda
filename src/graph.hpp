@@ -14,6 +14,7 @@ struct Edge {
 
 struct CsrGraph {
   uint32_t vertex_count = 0;
+  uint32_t edge_count = 0;
   // Row u contains outgoing edges u -> v.
   std::vector<uint32_t> row_offsets;
   std::vector<uint32_t> column_indices;
