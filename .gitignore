@@ -3,3 +3,4 @@
 .codex
 *.out
 data/*.txt
+build/

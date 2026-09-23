@@ -15,6 +15,22 @@ Compare the variants on accuracy and time to answer, excluding graph loading tim
 
 The initial milestone is a correct GPU SSSP implementation. Approximate variants, comparisons, and analysis follow from that baseline. GPU hardware and CUDA version requirements are not yet specified.
 
+## Current command-line prototype
+
+The current executable only parses a graph on the host and builds outgoing-edge CSR (one row per source vertex). It does not compute shortest paths yet. Build it with CMake and run it on a SNAP-style edge list:
+
+```sh
+cmake -S . -B build
+cmake --build build
+./build/tropical_sssp data/a.txt --algorithm exact_spmv --weights unit
+```
+
+The first argument must be a `.txt` path. Each non-comment line contains `source destination`, or `source destination weight` with `--weights file`. Vertex IDs are zero-based. Blank lines, `#` comments, and a standalone `...` placeholder are ignored. The vertex count is inferred from the largest ID in the edge list; header counts are informational. In particular, `data/a.txt` is an excerpt and its header does not describe only the edges present in that file.
+
+`--source N` selects the source vertex; if omitted, it defaults to the source vertex of the first edge in the file. `--algorithm` accepts `exact_spmv`, `approx_cusparse`, `gapbs`, or `cugraph`. `--weights` accepts `unit` (default) or `file`. The CLI also accepts `--output PATH`, `--repetitions N`, and `--max-iterations N`; these are reserved for solver execution and currently have no computational effect. No output file is written yet.
+
+The program reports timings for argument parsing, file I/O, edge parsing, CSR construction, reporting, and total elapsed time. These are host wall-clock timings measured with [fsossai/timers](https://github.com/fsossai/timers). Future time-to-answer measurements will exclude graph loading and preprocessing.
+
 ## TODO
 
 - [ ] GPU: Exact tropical Bellman-Ford with hand-crafted SpMV.
