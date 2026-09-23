@@ -70,9 +70,11 @@ Options parse_options(int argc, char** argv) {
       print_usage(argv[0]);
       std::exit(0);
     }
+
     if (i + 1 >= argc) {
       throw std::runtime_error("missing value for " + flag);
     }
+
     const std::string value = argv[++i];
     if (flag == "--source") {
       options.source = parse_number(value, flag, true);
@@ -142,21 +144,26 @@ int main(int argc, char** argv) {
     sw_csr_build.stop();
 
     sw_reporting.start();
-    std::cout << "graph=" << options.graph_path << '\n'
-              << "vertices=" << graph.vertex_count << '\n'
-              << "edges=" << graph.column_indices.size() << '\n'
-              << "csr_rows=source, csr_columns=destination\n"
-              << "source=" << source << '\n'
-              << "algorithm=" << options.algorithm << '\n'
-              << "weights=" << (options.weights == WeightMode::unit ? "unit" : "file") << '\n'
-              << "repetitions=" << options.repetitions << '\n'
-              << "max_iterations="
+    std::cout << "graph          : " << options.graph_path << '\n'
+              << "vertices       : " << graph.vertex_count << '\n'
+              << "edges          : " << graph.column_indices.size() << '\n'
+              << "csr_rows       : source\n"
+              << "csr_columns    : destination\n"
+              << "source         : " << source << '\n'
+              << "algorithm      : " << options.algorithm << '\n'
+              << "weights        : " << (options.weights == WeightMode::unit ? "unit" : "file")
+              << '\n'
+              << "repetitions    : " << options.repetitions << '\n'
+              << "max_iterations : "
               << (options.max_iterations ? std::to_string(*options.max_iterations) : "auto")
               << '\n';
+
     if (options.output_path) {
-      std::cout << "output=" << *options.output_path << " (reserved; no distances written)\n";
+      std::cout << "output         : " << *options.output_path
+                << " (reserved; no distances written)\n";
     }
-    std::cout << "status=parsed_csr_only\n";
+
+    std::cout << "status         : parsed_csr_only\n";
     sw_reporting.stop();
     return 0;
   } catch (const std::exception& error) {

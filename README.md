@@ -6,10 +6,10 @@ It will compare several variants with different trade-offs, starting with a corr
 
 ## TODO
 
-- [ ] GPU: Exact tropical Bellman-Ford with hand-crafted SpMV.
-- [ ] GPU: Approximate tropical Bellman-Ford using cuSPARSE.
-- [ ] CPU: Multithreaded implementation based on GAPBS \[Beamer et al.\].
-- [ ] GPU: Exact implementation using cuGraph.
+- [ ] Exact tropical Bellman-Ford with hand-crafted SpMV.
+- [ ] Approximate tropical Bellman-Ford using cuSPARSE.
+- [ ] CPU Multithreaded implementation for based on GAPBS \[Beamer et al.\].
+- [ ] Exact implementation using cuGraph.
 
 ## Graphs
 
