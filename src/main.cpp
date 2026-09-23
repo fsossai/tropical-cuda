@@ -121,7 +121,7 @@ std::string read_file(const std::string& path) {
 
 // Write one distance per vertex to the requested output file.
 void write_distances(const std::string& path, const std::vector<float>& distances) {
-  ScopedTimer st("total.output");
+  ScopedTimer st("output");
   std::ofstream output(path);
   if (!output) {
     throw std::runtime_error("cannot open output: " + path);
@@ -147,13 +147,7 @@ void write_distances(const std::string& path, const std::vector<float>& distance
 
 // Run the selected backend and report its results and phase timings.
 int main(int argc, char** argv) {
-  Stopwatch sw_total("total", /*stats=*/false);
-  Stopwatch sw_file_io("total.file_io", /*stats=*/false);
-  Stopwatch sw_parsing("total.parsing", /*stats=*/false);
-  Stopwatch sw_csr_build("total.csr_build", /*stats=*/false);
-  Stopwatch sw_kernel("total.kernel", /*stats=*/false);
-  Stopwatch sw_output("total.output", /*stats=*/false);
-  ScopedTimer st_total(sw_total);
+  ScopedTimer st_total("total");
 
   try {
     if (argc == 1 || (argc == 2 && std::string_view(argv[1]) == "--help")) {
@@ -178,21 +172,21 @@ int main(int argc, char** argv) {
       throw std::runtime_error("--max-iterations is not supported by cuGraph SSSP");
     }
 
-    sw_file_io.start();
+    TIMER_START("file_io");
     const auto contents = read_file(options.graph_path);
-    sw_file_io.stop();
+    TIMER_STOP();
 
-    sw_parsing.start();
+    TIMER_START("parsing");
     const auto edges = parse_edges(contents, options.weights);
     if (edges.empty()) {
       throw std::runtime_error("graph contains no edges");
     }
     const uint32_t source = options.source.value_or(edges.front().source);
-    sw_parsing.stop();
+    TIMER_STOP();
 
-    sw_csr_build.start();
+    TIMER_START("csr_build");
     auto graph = build_csr(edges, source);
-    sw_csr_build.stop();
+    TIMER_STOP();
 
     std::cout << "graph          : " << options.graph_path << '\n'
               << "vertices       : " << graph.vertex_count << '\n'
@@ -209,28 +203,24 @@ int main(int argc, char** argv) {
               << '\n';
 
     if (options.algorithm == "tropical_exact" || options.algorithm == "tropical_apx") {
-      ScopedTimer st("total.transpose");
+      Stopwatch sw_transpose("transpose", /*stats=*/false);
+      ScopedTimer st_transpose(sw_transpose);
       graph = transpose_csr_with_cusparse(graph);
     }
 
     std::vector<float> distances;
-    {
-      ScopedTimer st_kernel(sw_kernel);
-      if (options.algorithm == "cugraph") {
-        distances = run_cugraph_sssp(graph, source, options.repetitions);
-      } else if (options.algorithm == "tropical_exact") {
-        distances =
-            run_tropical_exact_sssp(graph, source, options.repetitions, options.max_iterations);
-      }
+    TIMER_START("end_to_end");
+    if (options.algorithm == "cugraph") {
+      distances = run_cugraph_sssp(graph, source, options.repetitions);
+    } else if (options.algorithm == "tropical_exact") {
+      distances =
+          run_tropical_exact_sssp(graph, source, options.repetitions, options.max_iterations);
     }
+    TIMER_STOP();
 
     if (options.output_path) {
       write_distances(*options.output_path, distances);
-      std::cout << "output         : " << *options.output_path;
-      if (options.algorithm != "cugraph") {
-        std::cout << " (reserved; no distances written)";
-      }
-      std::cout << '\n';
+      std::cout << "output         : " << *options.output_path << "\n";
     }
 
     const auto reachable = std::count_if(distances.begin(), distances.end(),

@@ -47,7 +47,7 @@ using Paths = std::unique_ptr<cugraph_paths_result_t, decltype(&cugraph_paths_re
 class InputArray {
 public:
   InputArray(const cugraph_resource_handle_t* handle, const void* data, size_t size,
-             cugraph_data_type_id_t type, Stopwatch& sw_host_to_device)
+             cugraph_data_type_id_t type)
       : array_(nullptr, &cugraph_type_erased_device_array_free),
         view_(nullptr, &cugraph_type_erased_device_array_view_free) {
     cugraph_type_erased_device_array_t* raw_array = nullptr;
@@ -62,13 +62,10 @@ public:
       throw std::runtime_error("cuGraph device array view creation failed");
     }
 
-    {
-      ScopedTimer st_copy(sw_host_to_device);
-      error = nullptr;
-      const auto copy_code = cugraph_type_erased_device_array_view_copy_from_host(
-          handle, view_.get(), reinterpret_cast<const byte_t*>(data), &error);
-      CHECK_CUGRAPH(copy_code, error);
-    }
+    error = nullptr;
+    const auto copy_code = cugraph_type_erased_device_array_view_copy_from_host(
+        handle, view_.get(), reinterpret_cast<const byte_t*>(data), &error);
+    CHECK_CUGRAPH(copy_code, error);
   }
 
   const cugraph_type_erased_device_array_view_t* view() const { return view_.get(); }
@@ -88,9 +85,7 @@ std::vector<float> run_cugraph_sssp(const CsrGraph& graph, uint32_t source, uint
     throw std::runtime_error("cuGraph repetitions must be positive");
   }
 
-  Stopwatch sw_setup("total.kernel.setup", /*stats=*/false);
-  Stopwatch sw_host_to_device("total.kernel.setup.host_to_device", /*stats=*/false);
-  sw_setup.start();
+  TIMER_START("kernel.setup");
   Handle handle(cugraph_create_resource_handle(nullptr), &cugraph_free_resource_handle);
   if (!handle) {
     throw std::runtime_error("cuGraph resource handle creation failed");
@@ -103,10 +98,9 @@ std::vector<float> run_cugraph_sssp(const CsrGraph& graph, uint32_t source, uint
 
   std::vector<int32_t> offsets(graph.row_offsets.begin(), graph.row_offsets.end());
   std::vector<int32_t> indices(graph.column_indices.begin(), graph.column_indices.end());
-  InputArray device_offsets(handle.get(), offsets.data(), offsets.size(), INT32, sw_host_to_device);
-  InputArray device_indices(handle.get(), indices.data(), indices.size(), INT32, sw_host_to_device);
-  InputArray device_weights(handle.get(), graph.weights.data(), graph.weights.size(), FLOAT32,
-                            sw_host_to_device);
+  InputArray device_offsets(handle.get(), offsets.data(), offsets.size(), INT32);
+  InputArray device_indices(handle.get(), indices.data(), indices.size(), INT32);
+  InputArray device_weights(handle.get(), graph.weights.data(), graph.weights.size(), FLOAT32);
 
   const cugraph_graph_properties_t properties{FALSE, TRUE};
   cugraph_graph_t* raw_graph = nullptr;
@@ -117,29 +111,27 @@ std::vector<float> run_cugraph_sssp(const CsrGraph& graph, uint32_t source, uint
   Graph device_graph(raw_graph, &cugraph_graph_free);
   CHECK_CUGRAPH(graph_code, error);
   CHECK_CUDA(cudaDeviceSynchronize());
-  sw_setup.stop();
+  TIMER_STOP();
 
-  Stopwatch sw_compute("total.kernel.compute", /*stats=*/false);
+  Stopwatch sw_kernel("kernel", /*stats=*/false);
   Paths paths(nullptr, &cugraph_paths_result_free);
   for (uint32_t run = 0; run < repetitions; ++run) {
-    ScopedTimer st("total.kernel.rep");
     paths.reset();
+    cugraph_paths_result_t* raw_paths = nullptr;
     {
-      // Include synchronization so the stopwatch covers GPU work, not just its launch.
-      ScopedTimer st_compute(sw_compute);
-      cugraph_paths_result_t* raw_paths = nullptr;
+      ScopedTimer st1(sw_kernel);
+      ScopedTimer st2("kernel.rep");
       error = nullptr;
       const auto code =
           cugraph_sssp(handle.get(), device_graph.get(), source, std::numeric_limits<float>::max(),
                        FALSE, FALSE, &raw_paths, &error);
-      paths.reset(raw_paths);
       CHECK_CUGRAPH(code, error);
       CHECK_CUDA(cudaDeviceSynchronize());
     }
+    paths.reset(raw_paths);
   }
 
-  Stopwatch sw_download("total.kernel.download", /*stats=*/false);
-  sw_download.start();
+  TIMER_START("kernel.download");
   DeviceView vertices(cugraph_paths_result_get_vertices(paths.get()),
                       &cugraph_type_erased_device_array_view_free);
   DeviceView distances(cugraph_paths_result_get_distances(paths.get()),
@@ -157,19 +149,15 @@ std::vector<float> run_cugraph_sssp(const CsrGraph& graph, uint32_t source, uint
 
   std::vector<int32_t> vertex_ids(count);
   std::vector<float> values(count);
-  Stopwatch sw_device_to_host("total.kernel.download.device_to_host", /*stats=*/false);
-  {
-    ScopedTimer st_copy(sw_device_to_host);
-    error = nullptr;
-    const auto vertices_code = cugraph_type_erased_device_array_view_copy_to_host(
-        handle.get(), reinterpret_cast<byte_t*>(vertex_ids.data()), vertices.get(), &error);
-    CHECK_CUGRAPH(vertices_code, error);
-    error = nullptr;
-    const auto distances_code = cugraph_type_erased_device_array_view_copy_to_host(
-        handle.get(), reinterpret_cast<byte_t*>(values.data()), distances.get(), &error);
-    CHECK_CUGRAPH(distances_code, error);
-    CHECK_CUDA(cudaDeviceSynchronize());
-  }
+  error = nullptr;
+  const auto vertices_code = cugraph_type_erased_device_array_view_copy_to_host(
+      handle.get(), reinterpret_cast<byte_t*>(vertex_ids.data()), vertices.get(), &error);
+  CHECK_CUGRAPH(vertices_code, error);
+  error = nullptr;
+  const auto distances_code = cugraph_type_erased_device_array_view_copy_to_host(
+      handle.get(), reinterpret_cast<byte_t*>(values.data()), distances.get(), &error);
+  CHECK_CUGRAPH(distances_code, error);
+  CHECK_CUDA(cudaDeviceSynchronize());
 
   std::vector<float> result(graph.vertex_count, std::numeric_limits<float>::infinity());
   for (size_t i = 0; i < count; ++i) {
@@ -181,6 +169,7 @@ std::vector<float> run_cugraph_sssp(const CsrGraph& graph, uint32_t source, uint
                          ? std::numeric_limits<float>::infinity()
                          : values[i];
   }
-  sw_download.stop();
+  TIMER_STOP();
+
   return result;
 }

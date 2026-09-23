@@ -1,12 +1,12 @@
 #include "cuda_check.hpp"
 #include "tropical_solver.cuh"
-#include <cfloat>
 #include <timers/ScopedTimer.hpp>
 
 #include <cuda_runtime.h>
 
 #include <algorithm>
 #include <limits>
+#include <math.h>
 #include <stddef.h>
 #include <stdexcept>
 #include <stdint.h>
@@ -72,12 +72,12 @@ __global__ void tropical_spmv(const uint32_t* __restrict__ row_offsets,
   for (int i = warp_idx; i < vertex_count; i += grid_stride) {
     const uint32_t row_begin = row_offsets[i] + lane;
     const uint32_t row_end = row_offsets[i + 1];
-    float distance = FLT_MAX;
+    float distance = INFINITY;
     for (uint32_t col_offset = row_begin; col_offset < row_end; col_offset += warp_stride) {
       const uint32_t j = column_indices[col_offset];
       distance = fminf(distance, input[j] + weights[col_offset]);
     }
-    // distance = __reduce_min_sync(0xffffffffu, distance);
+    // warp-level min-reduction
     for (int delta = warpSize / 2; delta >= 1; delta /= 2) {
       distance = fmin(distance, __shfl_down_sync(0xffffffffu, distance, delta));
     }
@@ -172,7 +172,7 @@ CsrGraph transpose_csr_with_cusparse(const CsrGraph& graph) {
 std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t source,
                                            uint32_t repetitions,
                                            std::optional<uint32_t> max_iterations) {
-  Stopwatch sw_memcpy("total.kernel.memcpy", /*stats=*/false);
+  Stopwatch sw_memcpy("kernel.memcpy", /*stats=*/false);
 
   if (graph.vertex_count == 0 || source >= graph.vertex_count ||
       graph.row_offsets.size() != static_cast<size_t>(graph.vertex_count) + 1 ||
@@ -217,15 +217,17 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
   current = device_a.data();
   next = device_b.data();
 
+  Stopwatch sw_kernel("kernel", false);
   for (uint32_t repetition = 0; repetition < repetitions; ++repetition) {
-    ScopedTimer st("total.kernel.rep");
+    ScopedTimer st1(sw_kernel);
+    ScopedTimer st2("kernel.rep");
     sw_memcpy.start();
     CHECK_CUDA(cudaMemcpy(current, initial.data(), vertex_bytes, cudaMemcpyHostToDevice));
     sw_memcpy.stop();
     int changed = 1;
 
     for (uint32_t iteration = 0; changed && (iteration < iterations); ++iteration) {
-      ScopedTimer st("total.kernel.rep.it");
+      ScopedTimer st("kernel.rep.it");
       CHECK_CUDA(cudaMemsetAsync(device_changed.data(), 0, sizeof(int)));
       tropical_spmv<<<blocks, threads_per_block>>>(device_offsets.data(), device_columns.data(),
                                                    device_weights.data(), current, next,
