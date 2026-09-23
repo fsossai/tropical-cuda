@@ -9,4 +9,4 @@
 // Compute an approximate SSSP solution using the accelerated backend.
 std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
                                          uint32_t repetitions,
-                                         std::optional<uint32_t> max_iterations);
+                                         std::optional<uint32_t> max_iterations, float beta);

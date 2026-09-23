@@ -7,6 +7,7 @@
 #include <limits>
 #include <math.h>
 #include <stddef.h>
+#include <iostream>
 #include <stdexcept>
 #include <stdint.h>
 #include <vector>
@@ -117,6 +118,7 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
   float* next = device_b.data();
   current = device_a.data();
   next = device_b.data();
+  uint32_t iterations_performed = 0;
 
   Stopwatch sw_kernel("kernel", false);
   for (uint32_t repetition = 0; repetition < repetitions; ++repetition) {
@@ -138,11 +140,13 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
       CHECK_CUDA(cudaMemcpy(&changed, device_changed.data(), sizeof(int), cudaMemcpyDeviceToHost));
       sw_memcpy.stop();
       std::swap(current, next);
+      ++iterations_performed;
     }
     sw_memcpy.start();
     CHECK_CUDA(cudaMemcpy(result.data(), current, vertex_bytes, cudaMemcpyDeviceToHost));
     sw_memcpy.stop();
   }
 
+  std::cout << "iterations: " << iterations_performed << '\n';
   return result;
 }

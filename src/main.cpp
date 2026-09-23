@@ -7,6 +7,7 @@
 #include <timers/ScopedTimer.hpp>
 
 #include <algorithm>
+#include <cerrno>
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
@@ -30,6 +31,7 @@ struct Options {
   std::optional<std::string> output_path;
   uint32_t repetitions = 1;
   std::optional<uint32_t> max_iterations;
+  std::optional<float> beta;
 };
 
 void print_usage(const char* program) {
@@ -41,6 +43,7 @@ void print_usage(const char* program) {
             << "  --weights MODE         unit (default) or weighted\n"
             << "  --repetitions N        Number of SSSP runs (default: 1)\n"
             << "  --max-iterations N     Maximum Bellman-Ford iterations\n"
+            << "  --beta VALUE           Positive tropical_apx approximation parameter\n"
             << "  --output PATH          Write distances to PATH\n"
             << "  --help                 Show this message\n";
 }
@@ -51,6 +54,20 @@ uint32_t parse_uint32(std::string_view value, std::string_view option) {
   if (error != std::errc{} || end != value.data() + value.size()) {
     throw std::runtime_error("invalid value for " + std::string(option));
   }
+  return result;
+}
+
+// Parse a finite, strictly positive floating-point command-line value.
+float parse_positive_float(std::string_view value, std::string_view option) {
+  const std::string text(value);
+  char* end = nullptr;
+  errno = 0;
+  const float result = std::strtof(text.c_str(), &end);
+  if (errno == ERANGE || end != text.c_str() + text.size() || !std::isfinite(result) ||
+      result <= 0.0f) {
+    throw std::runtime_error("invalid value for " + std::string(option));
+  }
+
   return result;
 }
 
@@ -100,6 +117,8 @@ Options parse_options(int argc, char** argv) {
       }
     } else if (argument == "--max-iterations") {
       options.max_iterations = parse_uint32(require_value(), argument);
+    } else if (argument == "--beta") {
+      options.beta = parse_positive_float(require_value(), argument);
     } else if (argument == "--output") {
       options.output_path = std::string(require_value());
     } else {
@@ -156,6 +175,9 @@ int main(int argc, char** argv) {
     if (options.algorithm == "cugraph" && options.max_iterations) {
       throw std::runtime_error("--max-iterations is unsupported by cugraph");
     }
+    if (options.algorithm != "tropical_apx" && options.beta) {
+      throw std::runtime_error("--beta is only supported by tropical_apx");
+    }
 
     TIMER_START("file_io");
     const auto contents = read_file(options.graph_path);
@@ -195,7 +217,8 @@ int main(int argc, char** argv) {
             run_tropical_exact_sssp(graph, source, options.repetitions, options.max_iterations);
       } else {
         distances =
-            run_tropical_apx_sssp(graph, source, options.repetitions, options.max_iterations);
+            run_tropical_apx_sssp(graph, source, options.repetitions, options.max_iterations,
+                                  options.beta.value_or(1.0f));
       }
     }
 

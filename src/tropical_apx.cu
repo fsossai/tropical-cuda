@@ -11,6 +11,7 @@
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 
+#include <iostream>
 #include <limits>
 #include <math.h>
 #include <memory>
@@ -103,7 +104,7 @@ __global__ void transform_domain(float beta, float* __restrict__ values, uint32_
 // Run the approximate backend until convergence or its requested iteration cap.
 std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
                                          uint32_t repetitions,
-                                         std::optional<uint32_t> max_iterations) {
+                                         std::optional<uint32_t> max_iterations, float beta) {
   Stopwatch sw_memcpy("kernel.memcpy", /*stats=*/false);
   Stopwatch sw_encode("kernel.encode", /*stats=*/false);
   Stopwatch sw_decode("kernel.decode", /*stats=*/false);
@@ -112,7 +113,7 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
       graph.row_offsets.size() != static_cast<size_t>(graph.vertex_count) + 1 ||
       graph.edge_count != graph.column_indices.size() ||
       graph.column_indices.size() != graph.weights.size() ||
-      (max_iterations && *max_iterations == 0)) {
+      (max_iterations && *max_iterations == 0) || !std::isfinite(beta) || beta <= 0.0f) {
     throw std::invalid_argument("invalid tropical approximate SSSP inputs");
   }
 
@@ -147,10 +148,11 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
   const uint32_t e_blocks = (graph.edge_count + threads_per_block - 1) / threads_per_block;
   float* current = device_a.data();
   float* next = device_b.data();
+  uint32_t iterations_performed = 0;
 
   sw_encode.start();
-  transform_domain</*encode=*/true><<<e_blocks, threads_per_block>>>(
-      /*beta=*/1.0f, device_weights.data(), graph.edge_count);
+  transform_domain</*encode=*/true>
+      <<<e_blocks, threads_per_block>>>(beta, device_weights.data(), graph.edge_count);
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
   sw_encode.stop();
@@ -167,8 +169,8 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
     sw_memcpy.stop();
 
     sw_encode.start();
-    transform_domain</*encode=*/true><<<v_blocks, threads_per_block>>>(
-        /*beta=*/1.0f, current, graph.vertex_count);
+    // transform_domain</*encode=*/true><<<v_blocks, threads_per_block>>>(
+    //     beta, current, graph.vertex_count);
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
     sw_encode.stop();
@@ -176,12 +178,13 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
     for (uint32_t iteration = 0; iteration < iterations; ++iteration) {
       CHECK_CUDA(cudaMemcpy(next, current, vertex_bytes, cudaMemcpyDeviceToDevice));
       spmv.multiply(current, next);
-      const auto begin = thrust::make_zip_iterator(
-          thrust::make_tuple(thrust::device_pointer_cast(current), thrust::device_pointer_cast(next)));
-      const float residual = thrust::transform_reduce(
-          thrust::device, begin, begin + graph.vertex_count, RelativeIncrement{}, 0.0f,
-          thrust::maximum<float>{});
+      const auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+          thrust::device_pointer_cast(current), thrust::device_pointer_cast(next)));
+      const float residual =
+          thrust::transform_reduce(thrust::device, begin, begin + graph.vertex_count,
+                                   RelativeIncrement{}, 0.0f, thrust::maximum<float>{});
       std::swap(current, next);
+      ++iterations_performed;
 
       if (residual <= residual_tolerance) {
         break;
@@ -189,8 +192,8 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
     }
     sw_decode.start();
     sw_kernel.start();
-    transform_domain</*encode=*/false><<<v_blocks, threads_per_block>>>(
-        /*beta=*/1.0f, current, graph.vertex_count);
+    transform_domain</*encode=*/false>
+        <<<v_blocks, threads_per_block>>>(beta, current, graph.vertex_count);
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
     sw_kernel.stop();
@@ -201,5 +204,6 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
     sw_memcpy.stop();
   }
 
+  std::cout << "iterations: " << iterations_performed << '\n';
   return result;
 }
