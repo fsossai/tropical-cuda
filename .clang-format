@@ -1,0 +1,6 @@
+BasedOnStyle: LLVM
+UseTab: Never
+ColumnLimit: 100
+BreakBeforeBraces: Attach
+PointerAlignment: Left
+SortIncludes: CaseSensitive
