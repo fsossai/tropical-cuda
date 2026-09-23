@@ -44,6 +44,9 @@ if(BUILD_TESTING)
   set_tests_properties(default_source PROPERTIES PASS_REGULAR_EXPRESSION "source *: *7([^0-9]|$)")
   add_test(NAME explicit_source COMMAND tropical_sssp ${CMAKE_CURRENT_SOURCE_DIR}/tests/first_source.txt --source 0)
   set_tests_properties(explicit_source PROPERTIES PASS_REGULAR_EXPRESSION "source *: *0([^0-9]|$)")
+  add_test(NAME cli_usage COMMAND ${CMAKE_COMMAND}
+    -Dprogram=$<TARGET_FILE:tropical_sssp>
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_usage_test.cmake)
   if(TARGET cugraph::cugraph_c)
     add_executable(cugraph_test tests/cugraph_test.cpp src/graph.cpp src/cugraph_solver.cpp)
     target_compile_features(cugraph_test PRIVATE cxx_std_17)
