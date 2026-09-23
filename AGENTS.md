@@ -7,4 +7,3 @@
 - Add a comment of at most two lines describing the purpose of each nontrivial class and function.
 - Do not use emoji anywhere in the project.
 - Modify `README.md` only to resolve inconsistencies; do not update it automatically when adding a feature.
-- Use [fsossai/timers](https://github.com/fsossai/timers) for timing. Declare named global `Stopwatch` variables with an `sw_` prefix, and let the library print their results automatically. Use `ScopedTimer` only when a timed section has multiple exit points; when timing a whole function, create one `ScopedTimer` at its entry. For other sections, call the stopwatch's `start()` and `stop()` methods directly. Name nested timers with dotted paths, such as `phase1.subphase2`. Label non-obvious `Stopwatch` constructor arguments with `/*arg=*/` comments, but do not label the name argument.
