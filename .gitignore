@@ -2,5 +2,6 @@
 .claude
 .codex
 *.out
-data/*.txt
 build/
+compile_commands.json
+data/*.txt

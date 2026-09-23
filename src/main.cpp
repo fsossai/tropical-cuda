@@ -24,8 +24,8 @@ Stopwatch sw_total("total", /*stats=*/false);
 Stopwatch sw_file_io("total.file_io", /*stats=*/false);
 Stopwatch sw_parsing("total.parsing", /*stats=*/false);
 Stopwatch sw_csr_build("total.csr_build", /*stats=*/false);
+Stopwatch sw_kernel("total.kernel", /*stats=*/false);
 Stopwatch sw_output("total.output", /*stats=*/false);
-Stopwatch sw_reporting("total.reporting", /*stats=*/false);
 
 struct Options {
   std::string graph_path;
@@ -37,6 +37,7 @@ struct Options {
   std::optional<std::uint32_t> max_iterations;
 };
 
+// Show the command syntax and supported options.
 void print_usage(const char* program) {
   std::cout << "Usage: " << program << " graph.txt [options]\n"
             << "  --source N             source vertex, default: first edge's source\n"
@@ -58,6 +59,7 @@ std::uint32_t parse_number(std::string_view value, const std::string& name, bool
   return number;
 }
 
+// Parse and validate the graph path and command-line options.
 Options parse_options(int argc, char** argv) {
   if (argc < 2 || argv[1][0] == '-') {
     throw std::runtime_error("the first argument must be a graph .txt path");
@@ -75,6 +77,11 @@ Options parse_options(int argc, char** argv) {
     if (flag == "--help") {
       print_usage(argv[0]);
       std::exit(0);
+    }
+
+    if (flag != "--source" && flag != "--algorithm" && flag != "--weights" && flag != "--output" &&
+        flag != "--repetitions" && flag != "--max-iterations") {
+      throw std::runtime_error("unknown option: " + flag);
     }
 
     if (i + 1 >= argc) {
@@ -101,8 +108,6 @@ Options parse_options(int argc, char** argv) {
       options.repetitions = parse_number(value, flag, false);
     } else if (flag == "--max-iterations") {
       options.max_iterations = parse_number(value, flag, false);
-    } else {
-      throw std::runtime_error("unknown option: " + flag);
     }
   }
   return options;
@@ -120,6 +125,7 @@ std::string read_file(const std::string& path) {
   return contents;
 }
 
+// Write one distance per vertex to the requested output file.
 void write_distances(const std::string& path, const std::vector<float>& distances) {
   ScopedTimer st1(sw_output);
   std::ofstream output(path);
@@ -145,14 +151,23 @@ void write_distances(const std::string& path, const std::vector<float>& distance
 
 } // namespace
 
+// Run the selected backend and report its results and phase timings.
 int main(int argc, char** argv) {
   ScopedTimer st1(sw_total);
   try {
-    if (argc == 2 && std::string_view(argv[1]) == "--help") {
+    if (argc == 1 || (argc == 2 && std::string_view(argv[1]) == "--help")) {
       print_usage(argv[0]);
       return 0;
     }
-    const Options options = parse_options(argc, argv);
+    Options options;
+    try {
+      options = parse_options(argc, argv);
+    } catch (const std::exception& error) {
+      std::cerr << "error: " << error.what() << '\n';
+      print_usage(argv[0]);
+      return 1;
+    }
+
     if (options.algorithm == "cugraph" && !cugraph_available()) {
       throw std::runtime_error(
           "cuGraph backend unavailable; install libcugraph and reconfigure CMake");
@@ -180,13 +195,16 @@ int main(int argc, char** argv) {
 
     std::vector<float> distances;
     if (options.algorithm == "cugraph") {
-      distances = run_cugraph_sssp(graph, source, options.repetitions);
+      {
+        ScopedTimer st_kernel(sw_kernel);
+        distances = run_cugraph_sssp(graph, source, options.repetitions);
+      }
+
       if (options.output_path) {
         write_distances(*options.output_path, distances);
       }
     }
 
-    sw_reporting.start();
     std::cout << "graph          : " << options.graph_path << '\n'
               << "vertices       : " << graph.vertex_count << '\n'
               << "edges          : " << graph.column_indices.size() << '\n'
@@ -218,7 +236,6 @@ int main(int argc, char** argv) {
     } else {
       std::cout << "status         : parsed_csr_only\n";
     }
-    sw_reporting.stop();
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "error: " << error.what() << '\n';

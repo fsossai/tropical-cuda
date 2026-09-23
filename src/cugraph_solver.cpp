@@ -1,6 +1,7 @@
 #include "cugraph_solver.hpp"
 #include "cuda_check.hpp"
 
+#include <memory>
 #include <timers/ScopedTimer.hpp>
 
 #include <cugraph_c/array.h>
@@ -10,17 +11,34 @@
 
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#define CHECK_CUGRAPH(code, error)                                                                 \
+  do {                                                                                             \
+    const cugraph_error_code_t cugraph_status = (code);                                            \
+    std::unique_ptr<cugraph_error_t, decltype(&cugraph_error_free)> cugraph_error(                 \
+        (error), &cugraph_error_free);                                                             \
+    if (cugraph_status != CUGRAPH_SUCCESS) {                                                       \
+      std::string message = std::string("cuGraph error in ") + __func__ + " at line " +            \
+                            std::to_string(__LINE__) + " (code " +                                 \
+                            std::to_string(static_cast<int>(cugraph_status)) + ")";                \
+      if (cugraph_error) {                                                                         \
+        message += ": ";                                                                           \
+        message += cugraph_error_message(cugraph_error.get());                                     \
+      }                                                                                            \
+      throw std::runtime_error(message);                                                           \
+    }                                                                                              \
+  } while (false)
+
 namespace {
 
-Stopwatch sw_cugraph("total.cugraph", /*stats=*/false);
-Stopwatch sw_setup("total.cugraph.setup", /*stats=*/false);
-Stopwatch sw_sssp("total.cugraph.sssp", /*stats=*/false);
-Stopwatch sw_download("total.cugraph.download", /*stats=*/false);
+Stopwatch sw_setup("total.kernel.setup", /*stats=*/false);
+Stopwatch sw_host_to_device("total.kernel.setup.host_to_device", /*stats=*/false);
+Stopwatch sw_compute("total.kernel.compute", /*stats=*/false);
+Stopwatch sw_download("total.kernel.download", /*stats=*/false);
+Stopwatch sw_device_to_host("total.kernel.download.device_to_host", /*stats=*/false);
 
 using Handle = std::unique_ptr<cugraph_resource_handle_t, decltype(&cugraph_free_resource_handle)>;
 using DeviceArray = std::unique_ptr<cugraph_type_erased_device_array_t,
@@ -30,19 +48,7 @@ using DeviceView = std::unique_ptr<cugraph_type_erased_device_array_view_t,
 using Graph = std::unique_ptr<cugraph_graph_t, decltype(&cugraph_graph_free)>;
 using Paths = std::unique_ptr<cugraph_paths_result_t, decltype(&cugraph_paths_result_free)>;
 
-void check_cugraph(cugraph_error_code_t code, cugraph_error_t* error, const char* operation) {
-  std::string message = operation;
-  if (error != nullptr) {
-    message += ": ";
-    message += cugraph_error_message(error);
-    cugraph_error_free(error);
-  }
-
-  if (code != CUGRAPH_SUCCESS) {
-    throw std::runtime_error(message);
-  }
-}
-
+// Own a cuGraph device array initialized from host data.
 class InputArray {
 public:
   InputArray(const cugraph_resource_handle_t* handle, const void* data, std::size_t size,
@@ -54,17 +60,20 @@ public:
     const auto code =
         cugraph_type_erased_device_array_create(handle, size, type, &raw_array, &error);
     array_.reset(raw_array);
-    check_cugraph(code, error, "cuGraph device allocation");
+    CHECK_CUGRAPH(code, error);
 
     view_.reset(cugraph_type_erased_device_array_view(array_.get()));
     if (!view_) {
       throw std::runtime_error("cuGraph device array view creation failed");
     }
 
-    error = nullptr;
-    const auto copy_code = cugraph_type_erased_device_array_view_copy_from_host(
-        handle, view_.get(), reinterpret_cast<const byte_t*>(data), &error);
-    check_cugraph(copy_code, error, "cuGraph host-to-device copy");
+    {
+      ScopedTimer st_copy(sw_host_to_device);
+      error = nullptr;
+      const auto copy_code = cugraph_type_erased_device_array_view_copy_from_host(
+          handle, view_.get(), reinterpret_cast<const byte_t*>(data), &error);
+      CHECK_CUGRAPH(copy_code, error);
+    }
   }
 
   const cugraph_type_erased_device_array_view_t* view() const { return view_.get(); }
@@ -78,9 +87,9 @@ private:
 
 bool cugraph_available() { return true; }
 
+// Build a cuGraph CSR graph and compute SSSP on the GPU for the requested runs.
 std::vector<float> run_cugraph_sssp(const CsrGraph& graph, std::uint32_t source,
                                     std::uint32_t repetitions) {
-  ScopedTimer st1(sw_cugraph);
   if (repetitions == 0) {
     throw std::runtime_error("cuGraph repetitions must be positive");
   }
@@ -110,23 +119,25 @@ std::vector<float> run_cugraph_sssp(const CsrGraph& graph, std::uint32_t source,
       handle.get(), &properties, device_offsets.view(), device_indices.view(),
       device_weights.view(), nullptr, nullptr, FALSE, FALSE, FALSE, FALSE, &raw_graph, &error);
   Graph device_graph(raw_graph, &cugraph_graph_free);
-  check_cugraph(graph_code, error, "cuGraph CSR construction");
+  CHECK_CUGRAPH(graph_code, error);
   CHECK_CUDA(cudaDeviceSynchronize());
   sw_setup.stop();
 
   Paths paths(nullptr, &cugraph_paths_result_free);
   for (std::uint32_t run = 0; run < repetitions; ++run) {
     paths.reset();
-    sw_sssp.start();
-    cugraph_paths_result_t* raw_paths = nullptr;
-    error = nullptr;
-    const auto code =
-        cugraph_sssp(handle.get(), device_graph.get(), source, std::numeric_limits<float>::max(),
-                     FALSE, FALSE, &raw_paths, &error);
-    paths.reset(raw_paths);
-    check_cugraph(code, error, "cuGraph SSSP");
-    CHECK_CUDA(cudaDeviceSynchronize());
-    sw_sssp.stop();
+    {
+      // Include synchronization so the stopwatch covers GPU work, not just its launch.
+      ScopedTimer st_compute(sw_compute);
+      cugraph_paths_result_t* raw_paths = nullptr;
+      error = nullptr;
+      const auto code =
+          cugraph_sssp(handle.get(), device_graph.get(), source, std::numeric_limits<float>::max(),
+                       FALSE, FALSE, &raw_paths, &error);
+      paths.reset(raw_paths);
+      CHECK_CUGRAPH(code, error);
+      CHECK_CUDA(cudaDeviceSynchronize());
+    }
   }
 
   sw_download.start();
@@ -147,15 +158,18 @@ std::vector<float> run_cugraph_sssp(const CsrGraph& graph, std::uint32_t source,
 
   std::vector<std::int32_t> vertex_ids(count);
   std::vector<float> values(count);
-  error = nullptr;
-  const auto vertices_code = cugraph_type_erased_device_array_view_copy_to_host(
-      handle.get(), reinterpret_cast<byte_t*>(vertex_ids.data()), vertices.get(), &error);
-  check_cugraph(vertices_code, error, "cuGraph vertex download");
-  error = nullptr;
-  const auto distances_code = cugraph_type_erased_device_array_view_copy_to_host(
-      handle.get(), reinterpret_cast<byte_t*>(values.data()), distances.get(), &error);
-  check_cugraph(distances_code, error, "cuGraph distance download");
-  CHECK_CUDA(cudaDeviceSynchronize());
+  {
+    ScopedTimer st_copy(sw_device_to_host);
+    error = nullptr;
+    const auto vertices_code = cugraph_type_erased_device_array_view_copy_to_host(
+        handle.get(), reinterpret_cast<byte_t*>(vertex_ids.data()), vertices.get(), &error);
+    CHECK_CUGRAPH(vertices_code, error);
+    error = nullptr;
+    const auto distances_code = cugraph_type_erased_device_array_view_copy_to_host(
+        handle.get(), reinterpret_cast<byte_t*>(values.data()), distances.get(), &error);
+    CHECK_CUGRAPH(distances_code, error);
+    CHECK_CUDA(cudaDeviceSynchronize());
+  }
 
   std::vector<float> result(graph.vertex_count, std::numeric_limits<float>::infinity());
   for (std::size_t i = 0; i < count; ++i) {
