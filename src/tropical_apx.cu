@@ -169,8 +169,8 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
     sw_memcpy.stop();
 
     sw_encode.start();
-    // transform_domain</*encode=*/true><<<v_blocks, threads_per_block>>>(
-    //     beta, current, graph.vertex_count);
+    transform_domain</*encode=*/true>
+        <<<v_blocks, threads_per_block>>>(beta, current, graph.vertex_count);
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
     sw_encode.stop();
