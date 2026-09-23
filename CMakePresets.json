@@ -13,7 +13,6 @@
         "OpenMP_CXX_FLAGS": "-fopenmp=libomp -I/usr/lib/llvm-14/lib/clang/14.0.0/include",
         "OpenMP_CXX_LIB_NAMES": "omp",
         "OpenMP_omp_LIBRARY": "/usr/lib/llvm-14/lib/libomp.so",
-        "TROPICAL_CUGRAPH_SITE_PACKAGES": "/tank/federico/.local/venvs/rapids/lib/python3.12/site-packages",
         "TROPICAL_ENABLE_CUGRAPH": "ON"
       }
     }

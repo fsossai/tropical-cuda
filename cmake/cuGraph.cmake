@@ -1,27 +1,35 @@
-# Locates the RAPIDS cuGraph pip-wheel packages so that find_package(cugraph)
-# can resolve them. The pip wheels place their CMake configs under
-# <pkg>/lib64/cmake/<pkg>, which find_package does not discover via
-# CMAKE_PREFIX_PATH, so this sets the individual <pkg>_DIR variables instead.
-# It only sets a variable when the config file actually exists, so a machine
-# without cuGraph keeps the normal find_package(... QUIET) fallback behavior.
+# Locate RAPIDS CMake packages installed by pip. By default, the active
+# Python environment supplies the site-packages directory. Set
+# TROPICAL_CUGRAPH_SITE_PACKAGES to override that discovery.
+set(TROPICAL_CUGRAPH_SITE_PACKAGES "" CACHE PATH
+    "Python site-packages directory containing RAPIDS packages")
 
-# Override with -DTROPICAL_CUGRAPH_SITE_PACKAGES=<dir> for another install.
-set(TROPICAL_CUGRAPH_SITE_PACKAGES
-    "/tank/federico/.local/venvs/rapids/lib/python3.12/site-packages"
-    CACHE PATH "Directory holding the RAPIDS cuGraph pip-wheel packages")
+set(_cugraph_site_packages "${TROPICAL_CUGRAPH_SITE_PACKAGES}")
+set(_cugraph_python_result 0)
+if(NOT _cugraph_site_packages)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    execute_process(
+      COMMAND "${Python3_EXECUTABLE}" -c
+              "import sysconfig; print(sysconfig.get_path('purelib'))"
+      OUTPUT_VARIABLE _cugraph_site_packages
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      RESULT_VARIABLE _cugraph_python_result)
+  endif()
+endif()
 
-if(NOT TROPICAL_CUGRAPH_SITE_PACKAGES)
+if(NOT _cugraph_python_result EQUAL 0 OR
+   NOT EXISTS "${_cugraph_site_packages}/libcugraph")
   return()
 endif()
 
-# Set <pkg>_DIR to the pip-wheel config dir when the package is installed.
-# <dir> is the on-disk package folder, which may differ from <pkg> (e.g. the
-# "raft" package lives in the "libraft" folder).
-function(cugraph_locate_package pkg dir)
-  if(NOT ${pkg}_DIR
-     AND EXISTS "${TROPICAL_CUGRAPH_SITE_PACKAGES}/${dir}/lib64/cmake/${pkg}/")
-    set(${pkg}_DIR "${TROPICAL_CUGRAPH_SITE_PACKAGES}/${dir}/lib64/cmake/${pkg}"
-        CACHE PATH "" FORCE)
+# Set a package config directory only when the caller has not supplied one.
+function(cugraph_locate_package package directory)
+  set(_cugraph_config
+      "${_cugraph_site_packages}/${directory}/lib64/cmake/${package}")
+  if(NOT ${package}_DIR AND EXISTS "${_cugraph_config}")
+    set(${package}_DIR "${_cugraph_config}" CACHE PATH
+        "CMake package directory for ${package}")
   endif()
 endfunction()
 
@@ -34,29 +42,16 @@ cugraph_locate_package(cudf libcudf)
 cugraph_locate_package(kvikio libkvikio)
 cugraph_locate_package(ucxx libucxx)
 cugraph_locate_package(rapids_logger rapids_logger)
+cugraph_locate_package(nvtx3 librmm)
+cugraph_locate_package(bs_thread_pool libkvikio)
 
-# nvtx3 and bs_thread_pool ship inside librmm and libkvikio respectively.
-if(NOT nvtx3_DIR
-   AND EXISTS "${TROPICAL_CUGRAPH_SITE_PACKAGES}/librmm/lib64/cmake/nvtx3/")
-  set(nvtx3_DIR "${TROPICAL_CUGRAPH_SITE_PACKAGES}/librmm/lib64/cmake/nvtx3"
-      CACHE PATH "" FORCE)
-endif()
-if(NOT bs_thread_pool_DIR
-   AND EXISTS "${TROPICAL_CUGRAPH_SITE_PACKAGES}/libkvikio/lib64/cmake/bs_thread_pool/")
-  set(bs_thread_pool_DIR
-      "${TROPICAL_CUGRAPH_SITE_PACKAGES}/libkvikio/lib64/cmake/bs_thread_pool"
-      CACHE PATH "" FORCE)
-endif()
-
-unset(cugraph_locate_package)
-
-# Library directories of the located packages, needed both to find the
-# transitive shared libraries at link time and to run the resulting binaries.
+# Keep RAPIDS shared libraries visible to the linker and executable without
+# exposing the pip environment's CUDA libraries to CMake's CUDA toolkit.
 set(TROPICAL_CUGRAPH_LIB_DIRS)
-foreach(dir IN ITEMS libcugraph libraft librmm libcuvs libcudf libkvikio libucxx rapids_logger)
-  if(EXISTS "${TROPICAL_CUGRAPH_SITE_PACKAGES}/${dir}/lib64")
+foreach(directory IN ITEMS libcugraph libraft librmm libcuvs libcudf libkvikio libucxx rapids_logger)
+  if(EXISTS "${_cugraph_site_packages}/${directory}/lib64")
     list(APPEND TROPICAL_CUGRAPH_LIB_DIRS
-         "${TROPICAL_CUGRAPH_SITE_PACKAGES}/${dir}/lib64")
+         "${_cugraph_site_packages}/${directory}/lib64")
   endif()
 endforeach()
 string(JOIN ":" TROPICAL_CUGRAPH_LIB_RPATH ${TROPICAL_CUGRAPH_LIB_DIRS})
