@@ -5,12 +5,29 @@
 
 #include <cuda_runtime.h>
 
+#include <thrust/device_ptr.h>
+#include <thrust/execution_policy.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/transform_reduce.h>
+#include <thrust/tuple.h>
+
 #include <limits>
 #include <math.h>
 #include <memory>
 #include <stdexcept>
 
 namespace {
+
+// Compute an element's relative increase in exponential-domain path mass.
+class RelativeIncrement {
+public:
+  template <typename Tuple> __host__ __device__ float operator()(const Tuple& values) const {
+    const float current = thrust::get<0>(values);
+    const float next = thrust::get<1>(values);
+
+    return next == 0.0f ? 0.0f : (next - current) / next;
+  }
+};
 
 // Own cuSPARSE resources for repeated CSR matrix-vector products.
 class CusparseSpmv {
@@ -125,6 +142,7 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
   std::vector<float> result(graph.vertex_count);
   const uint32_t iterations = max_iterations.value_or(graph.vertex_count - 1);
   constexpr uint32_t threads_per_block = 256;
+  constexpr float residual_tolerance = 1.0e-6f;
   const uint32_t v_blocks = (graph.vertex_count + threads_per_block - 1) / threads_per_block;
   const uint32_t e_blocks = (graph.edge_count + threads_per_block - 1) / threads_per_block;
   float* current = device_a.data();
@@ -158,7 +176,16 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
     for (uint32_t iteration = 0; iteration < iterations; ++iteration) {
       CHECK_CUDA(cudaMemcpy(next, current, vertex_bytes, cudaMemcpyDeviceToDevice));
       spmv.multiply(current, next);
+      const auto begin = thrust::make_zip_iterator(
+          thrust::make_tuple(thrust::device_pointer_cast(current), thrust::device_pointer_cast(next)));
+      const float residual = thrust::transform_reduce(
+          thrust::device, begin, begin + graph.vertex_count, RelativeIncrement{}, 0.0f,
+          thrust::maximum<float>{});
       std::swap(current, next);
+
+      if (residual <= residual_tolerance) {
+        break;
+      }
     }
     sw_decode.start();
     sw_kernel.start();
