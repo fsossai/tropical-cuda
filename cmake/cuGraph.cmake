@@ -59,12 +59,4 @@ foreach(dir IN ITEMS libcugraph libraft librmm libcuvs libcudf libkvikio libucxx
          "${TROPICAL_CUGRAPH_SITE_PACKAGES}/${dir}/lib64")
   endif()
 endforeach()
-# NVIDIA CUDA runtime and NCCL libraries shipped with the pip wheels.
-foreach(dir IN ITEMS "nvidia/cu13/lib" "nvidia/nccl/lib")
-  if(EXISTS "${TROPICAL_CUGRAPH_SITE_PACKAGES}/${dir}")
-    list(APPEND TROPICAL_CUGRAPH_LIB_DIRS
-         "${TROPICAL_CUGRAPH_SITE_PACKAGES}/${dir}")
-  endif()
-endforeach()
 string(JOIN ":" TROPICAL_CUGRAPH_LIB_RPATH ${TROPICAL_CUGRAPH_LIB_DIRS})
-set(CMAKE_BUILD_RPATH "${TROPICAL_CUGRAPH_LIB_RPATH}")
