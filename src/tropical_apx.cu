@@ -7,9 +7,9 @@
 
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
-#include <thrust/iterator/zip_iterator.h>
-#include <thrust/transform_reduce.h>
-#include <thrust/tuple.h>
+#include <thrust/functional.h>
+#include <thrust/reduce.h>
+#include <thrust/transform.h>
 
 #include <iostream>
 #include <limits>
@@ -18,17 +18,6 @@
 #include <stdexcept>
 
 namespace {
-
-// Compute an element's relative increase in exponential-domain path mass.
-class RelativeIncrement {
-public:
-  template <typename Tuple> __host__ __device__ float operator()(const Tuple& values) const {
-    const float current = thrust::get<0>(values);
-    const float next = thrust::get<1>(values);
-
-    return next == 0.0f ? 0.0f : (next - current) / next;
-  }
-};
 
 // Own cuSPARSE resources for repeated CSR matrix-vector products.
 class CusparseSpmv {
@@ -73,7 +62,7 @@ private:
   cusparseDnVecDescr_t input_ = nullptr;
   cusparseDnVecDescr_t output_ = nullptr;
   float alpha_ = 1.0f;
-  float beta_ = 1.0f;
+  float beta_ = 0.0f;
   size_t workspace_bytes_ = 0;
   std::unique_ptr<DeviceBuffer<char>> workspace_;
 };
@@ -124,8 +113,9 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
   DeviceBuffer<uint32_t> device_offsets(graph.row_offsets.size());
   DeviceBuffer<uint32_t> device_columns(graph.column_indices.size());
   DeviceBuffer<float> device_weights(graph.weights.size());
-  DeviceBuffer<float> device_a(graph.vertex_count);
-  DeviceBuffer<float> device_b(graph.vertex_count);
+  DeviceBuffer<float> device_frontier_a(graph.vertex_count);
+  DeviceBuffer<float> device_frontier_b(graph.vertex_count);
+  DeviceBuffer<float> device_total(graph.vertex_count);
 
   sw_memcpy.start();
   CHECK_CUDA(cudaMemcpy(device_offsets.data(), graph.row_offsets.data(), offset_bytes,
@@ -143,11 +133,10 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
   std::vector<float> result(graph.vertex_count);
   const uint32_t iterations = max_iterations.value_or(graph.vertex_count - 1);
   constexpr uint32_t threads_per_block = 256;
-  constexpr float residual_tolerance = 1.0e-6f;
   const uint32_t v_blocks = (graph.vertex_count + threads_per_block - 1) / threads_per_block;
   const uint32_t e_blocks = (graph.edge_count + threads_per_block - 1) / threads_per_block;
-  float* current = device_a.data();
-  float* next = device_b.data();
+  float* frontier = device_frontier_a.data();
+  float* next_frontier = device_frontier_b.data();
   uint32_t iterations_performed = 0;
 
   sw_encode.start();
@@ -158,49 +147,55 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
   sw_encode.stop();
 
   CusparseSpmv spmv(graph, device_offsets.data(), device_columns.data(), device_weights.data(),
-                    current, next);
+                    frontier, next_frontier);
 
   Stopwatch sw_kernel("kernel", false);
   for (uint32_t repetition = 0; repetition < repetitions; ++repetition) {
     ScopedTimer st_kernel(sw_kernel);
     ScopedTimer st_repetition("kernel.rep");
     sw_memcpy.start();
-    CHECK_CUDA(cudaMemcpy(current, initial.data(), vertex_bytes, cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(frontier, initial.data(), vertex_bytes, cudaMemcpyHostToDevice));
     sw_memcpy.stop();
 
     sw_encode.start();
     transform_domain</*encode=*/true>
-        <<<v_blocks, threads_per_block>>>(beta, current, graph.vertex_count);
+        <<<v_blocks, threads_per_block>>>(beta, frontier, graph.vertex_count);
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
     sw_encode.stop();
 
+    CHECK_CUDA(cudaMemcpy(device_total.data(), frontier, vertex_bytes, cudaMemcpyDeviceToDevice));
+
     for (uint32_t iteration = 0; iteration < iterations; ++iteration) {
-      CHECK_CUDA(cudaMemcpy(next, current, vertex_bytes, cudaMemcpyDeviceToDevice));
-      spmv.multiply(current, next);
-      const auto begin = thrust::make_zip_iterator(thrust::make_tuple(
-          thrust::device_pointer_cast(current), thrust::device_pointer_cast(next)));
-      const float residual =
-          thrust::transform_reduce(thrust::device, begin, begin + graph.vertex_count,
-                                   RelativeIncrement{}, 0.0f, thrust::maximum<float>{});
-      std::swap(current, next);
+      spmv.multiply(frontier, next_frontier);
+      const auto frontier_begin = thrust::device_pointer_cast(next_frontier);
+      const float max_frontier = thrust::reduce(
+          thrust::device, frontier_begin, frontier_begin + graph.vertex_count, 0.0f,
+          thrust::maximum<float>{});
+      // Accumulate this exact-length frontier into the all-length path distribution.
+      thrust::transform(thrust::device, thrust::device_pointer_cast(next_frontier),
+                         thrust::device_pointer_cast(next_frontier) + graph.vertex_count,
+                         thrust::device_pointer_cast(device_total.data()),
+                         thrust::device_pointer_cast(device_total.data()), thrust::plus<float>{});
+      std::swap(frontier, next_frontier);
       ++iterations_performed;
 
-      if (residual <= residual_tolerance) {
+      // Stop only after no exact-length path frontier remains.
+      if (max_frontier == 0.0f) {
         break;
       }
     }
     sw_decode.start();
     sw_kernel.start();
     transform_domain</*encode=*/false>
-        <<<v_blocks, threads_per_block>>>(beta, current, graph.vertex_count);
+        <<<v_blocks, threads_per_block>>>(beta, device_total.data(), graph.vertex_count);
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
     sw_kernel.stop();
     sw_decode.stop();
 
     sw_memcpy.start();
-    CHECK_CUDA(cudaMemcpy(result.data(), current, vertex_bytes, cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaMemcpy(result.data(), device_total.data(), vertex_bytes, cudaMemcpyDeviceToHost));
     sw_memcpy.stop();
   }
 
