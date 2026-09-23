@@ -20,10 +20,8 @@ int main() {
   require(edges.size() == 3, "wrong number of edges");
   const auto graph = build_csr(edges, 0);
   require(graph.vertex_count == 4, "wrong vertex count");
-  require(graph.row_offsets == std::vector<std::uint32_t>({0, 1, 2, 3, 3}),
-          "wrong CSR row offsets");
-  require(graph.column_indices == std::vector<std::uint32_t>({2, 2, 3}),
-          "wrong CSR column indices");
+  require(graph.row_offsets == std::vector<uint32_t>({0, 1, 2, 3, 3}), "wrong CSR row offsets");
+  require(graph.column_indices == std::vector<uint32_t>({2, 2, 3}), "wrong CSR column indices");
   require(std::fabs(graph.weights[1] - 0.25f) < 0.00001f, "wrong edge weight");
 
   const auto unit_edges = parse_edges("0 1\n", WeightMode::unit);

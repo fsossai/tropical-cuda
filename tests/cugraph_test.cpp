@@ -2,6 +2,7 @@
 #include "graph.hpp"
 
 #include <cmath>
+#include <stddef.h>
 #include <stdexcept>
 #include <vector>
 
@@ -14,7 +15,7 @@ int main() {
   if (distances.size() != 6) {
     throw std::runtime_error("cuGraph returned the wrong vertex count");
   }
-  for (std::size_t vertex = 0; vertex < expected.size(); ++vertex) {
+  for (size_t vertex = 0; vertex < expected.size(); ++vertex) {
     if (std::fabs(distances[vertex] - expected[vertex]) > 0.00001f) {
       throw std::runtime_error("cuGraph returned an incorrect distance");
     }
