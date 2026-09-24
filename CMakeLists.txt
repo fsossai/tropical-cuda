@@ -14,6 +14,7 @@ FetchContent_MakeAvailable(timers)
 add_executable(tropical_sssp
   src/main.cpp
   src/graph.cpp
+  src/graph_binary.cpp
   src/tropical_common.cu
   src/tropical_exact.cu
   src/tropical_apx.cu
@@ -22,6 +23,14 @@ set_target_properties(tropical_sssp PROPERTIES OUTPUT_NAME sssp)
 target_compile_features(tropical_sssp PRIVATE cxx_std_17 cuda_std_17)
 target_include_directories(tropical_sssp PRIVATE ${timers_SOURCE_DIR}/include src)
 target_link_libraries(tropical_sssp PRIVATE CUDA::cudart CUDA::cusparse)
+
+add_executable(graph_convert
+  src/graph_convert.cpp
+  src/graph.cpp
+  src/graph_binary.cpp
+)
+target_compile_features(graph_convert PRIVATE cxx_std_17)
+target_include_directories(graph_convert PRIVATE src)
 
 option(TROPICAL_ENABLE_CUGRAPH "Build the cuGraph backend" ON)
 if(TROPICAL_ENABLE_CUGRAPH)

@@ -4,6 +4,6 @@
 
 bool cugraph_available() { return false; }
 
-std::vector<float> run_cugraph_sssp(const CsrGraph&, uint32_t, uint32_t) {
+std::vector<float> run_cugraph_sssp(CsrGraphView, uint32_t, uint32_t) {
   throw std::runtime_error("cuGraph backend unavailable; install libcugraph and reconfigure CMake");
 }

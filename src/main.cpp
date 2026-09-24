@@ -1,5 +1,6 @@
 #include "cugraph_solver.hpp"
 #include "graph.hpp"
+#include "graph_binary.hpp"
 #include "tropical_apx.cuh"
 #include "tropical_common.cuh"
 #include "tropical_exact.cuh"
@@ -15,10 +16,12 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -35,7 +38,7 @@ struct Options {
 };
 
 void print_usage(const char* program) {
-  std::cout << "Usage: " << program << " <graph.txt> [options]\n"
+  std::cout << "Usage: " << program << " <graph.txt|graph.csrbin> [options]\n"
             << "\n"
             << "Options:\n"
             << "  --source NODE          Source vertex; defaults to the first edge source\n"
@@ -138,6 +141,13 @@ std::string read_file(const std::string& path) {
   return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 }
 
+// Report whether a path names the compact CSR binary graph format.
+bool is_csr_binary_path(const std::string& path) {
+  constexpr std::string_view extension = ".csrbin";
+  return path.size() >= extension.size() &&
+         std::string_view(path).substr(path.size() - extension.size()) == extension;
+}
+
 void write_distances(const std::string& path, const std::vector<float>& distances) {
   ScopedTimer st("output");
   std::ofstream output(path);
@@ -179,25 +189,45 @@ int main(int argc, char** argv) {
       throw std::runtime_error("--beta is only supported by tropical_apx");
     }
 
-    TIMER_START("file_io");
-    const auto contents = read_file(options.graph_path);
-    TIMER_STOP();
+    CsrGraph graph;
+    CsrGraphView graph_view;
+    std::unique_ptr<MappedCsrGraph> mapped_graph;
+    uint32_t source = 0;
+    if (is_csr_binary_path(options.graph_path)) {
+      TIMER_START("file_io");
+      if (options.algorithm == "cugraph") {
+        mapped_graph = std::make_unique<MappedCsrGraph>(options.graph_path);
+        graph_view = mapped_graph->view();
+        source = options.source.value_or(mapped_graph->default_source());
+      } else {
+        auto binary_graph = read_csr_binary(options.graph_path);
+        graph = std::move(binary_graph.graph);
+        graph_view = make_csr_graph_view(graph);
+        source = options.source.value_or(binary_graph.default_source);
+      }
+      TIMER_STOP();
+    } else {
+      TIMER_START("file_io");
+      const auto contents = read_file(options.graph_path);
+      TIMER_STOP();
 
-    TIMER_START("parsing");
-    auto edges = parse_edges(contents, options.weights);
-    if (edges.empty()) {
-      throw std::runtime_error("graph contains no edges");
+      TIMER_START("parsing");
+      auto edges = parse_edges(contents, options.weights);
+      if (edges.empty()) {
+        throw std::runtime_error("graph contains no edges");
+      }
+      source = options.source.value_or(edges.front().source);
+      TIMER_STOP();
+
+      TIMER_START("csr_build");
+      graph = build_csr(edges, source);
+      TIMER_STOP();
+      graph_view = make_csr_graph_view(graph);
     }
-    const auto source = options.source.value_or(edges.front().source);
-    TIMER_STOP();
-
-    TIMER_START("csr_build");
-    auto graph = build_csr(edges, source);
-    TIMER_STOP();
 
     std::cout << "graph   : " << options.graph_path << '\n'
-              << "vertices: " << graph.vertex_count << '\n'
-              << "edges   : " << graph.edge_count << '\n'
+              << "vertices: " << graph_view.vertex_count << '\n'
+              << "edges   : " << graph_view.edge_count << '\n'
               << "source  : " << source << '\n'
               << "algorithm: " << options.algorithm << '\n';
 
@@ -205,13 +235,14 @@ int main(int argc, char** argv) {
       Stopwatch sw_transpose("transpose", /*stats=*/false);
       ScopedTimer st_transpose(sw_transpose);
       graph = transpose_csr_with_cusparse(graph);
+      graph_view = make_csr_graph_view(graph);
     }
 
     std::vector<float> distances;
     {
       ScopedTimer st("end_to_end");
       if (options.algorithm == "cugraph") {
-        distances = run_cugraph_sssp(graph, source, options.repetitions);
+        distances = run_cugraph_sssp(graph_view, source, options.repetitions);
       } else if (options.algorithm == "tropical_exact") {
         distances =
             run_tropical_exact_sssp(graph, source, options.repetitions, options.max_iterations);

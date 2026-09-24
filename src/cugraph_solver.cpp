@@ -80,7 +80,7 @@ private:
 bool cugraph_available() { return true; }
 
 // Build a cuGraph CSR graph and compute SSSP on the GPU for the requested runs.
-std::vector<float> run_cugraph_sssp(const CsrGraph& graph, uint32_t source, uint32_t repetitions) {
+std::vector<float> run_cugraph_sssp(CsrGraphView graph, uint32_t source, uint32_t repetitions) {
   if (repetitions == 0) {
     throw std::runtime_error("cuGraph repetitions must be positive");
   }
@@ -91,17 +91,18 @@ std::vector<float> run_cugraph_sssp(const CsrGraph& graph, uint32_t source, uint
     throw std::runtime_error("cuGraph resource handle creation failed");
   }
 
-  if (graph.vertex_count > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) ||
-      graph.edge_count != graph.column_indices.size() ||
-      graph.column_indices.size() > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+  if (graph.vertex_count == 0 || source >= graph.vertex_count || !graph.row_offsets ||
+      !graph.column_indices || !graph.weights ||
+      graph.vertex_count > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) ||
+      graph.edge_count > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
     throw std::runtime_error("cuGraph requires 32-bit vertex IDs and CSR offsets");
   }
 
-  std::vector<int32_t> offsets(graph.row_offsets.begin(), graph.row_offsets.end());
-  std::vector<int32_t> indices(graph.column_indices.begin(), graph.column_indices.end());
-  InputArray device_offsets(handle.get(), offsets.data(), offsets.size(), INT32);
-  InputArray device_indices(handle.get(), indices.data(), indices.size(), INT32);
-  InputArray device_weights(handle.get(), graph.weights.data(), graph.weights.size(), FLOAT32);
+  InputArray device_offsets(handle.get(), reinterpret_cast<const int32_t*>(graph.row_offsets),
+                            static_cast<size_t>(graph.vertex_count) + 1, INT32);
+  InputArray device_indices(handle.get(), reinterpret_cast<const int32_t*>(graph.column_indices),
+                            graph.edge_count, INT32);
+  InputArray device_weights(handle.get(), graph.weights, graph.edge_count, FLOAT32);
 
   const cugraph_graph_properties_t properties{FALSE, TRUE};
   cugraph_graph_t* raw_graph = nullptr;
