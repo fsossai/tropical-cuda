@@ -9,6 +9,8 @@
         "CXX": "clang++"
       },
       "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CUDA_ARCHITECTURES": "native",
         "CMAKE_CXX_COMPILER": "clang++",
         "OpenMP_CXX_FLAGS": "-fopenmp=libomp -I/usr/lib/llvm-14/lib/clang/14.0.0/include",
         "OpenMP_CXX_LIB_NAMES": "omp",

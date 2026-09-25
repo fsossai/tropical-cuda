@@ -54,10 +54,6 @@
       {
         "name": "wiki_talk",
         "value": "data/wiki-Talk.csrbin"
-      },
-      {
-        "name": "ego_gplus",
-        "value": "data/ego-Gplus.csrbin"
       }
     ],
     "solver": [
@@ -70,7 +66,9 @@
   },
   "trials": "${yuclid.workspace}/build/sssp ${yuclid.input_graph} --algorithm ${yuclid.solver} --repetitions ${yuclid.repetitions}",
   "metrics": {
+    "setup": "grep -E '^\\[scoped_timer\\] setup:' ${yuclid.@}.out | awk '{print $3}'",
     "kernel": "grep -E '^\\[stopwatch\\] kernel:' ${yuclid.@}.out | awk '{print $3}'",
+    "download": "grep -E '^\\[scoped_timer\\] download:' ${yuclid.@}.out | awk '{print $3}'",
     "end_to_end": "grep -E '^\\[scoped_timer\\] end_to_end:' ${yuclid.@}.out | awk '{print $3}'"
   },
   "order": [
