@@ -1,20 +1,22 @@
 # Floating-Point Considerations
 
-This note complements the approximate formulation in the [README](../README.md#an-approximate-formulation), which defines the transformation $T_\beta(x) = e^{-\beta x}$ and its inverse $T_\beta^{-1}(z) = -\frac{1}{\beta}\log z$.
+The soft-min never overestimates the true minimum. With $k$ terms, it underestimates it by at most $\log(k)/\beta$, so a larger $\beta$ is more accurate.
 
-**Approximation error.** For $k$ terms with minimum $m$, the transformed sum satisfies $e^{-\beta m} \le \sum_j e^{-\beta x_j} \le k\,e^{-\beta m}$, so decoding gives
+A larger $\beta$ also makes $e^{-\beta x}$ smaller. In single precision it loses precision once $\beta x > 87.3$ and becomes zero once $\beta x > 103.3$, and a zero decodes as $\infty$, so the vertex looks unreachable.
+If distances are encoded once and decoded only at the end, every distance must fit in this range at the same time, and far vertices are lost as soon as $\beta$ grows.
 
-$$
-m - \frac{\log k}{\beta} \le T_\beta^{-1}\left(\sum_j T_\beta(x_j)\right) \le m.
-$$
+`tropical_apx` avoids this by decoding after every step and re-encoding relative to a shift $c$, the smallest distance still waiting to be propagated.
+A vertex at distance $d$ is encoded as $e^{-\beta (d - c)}$, and the shift cancels when decoding, so it never changes the result.
+Only vertices within a window above $c$ are encoded; the others count as zero for that step and wait for a later one.
+The window is as wide as the range allows, $87.3/\beta - w_{\max}$, so values never underflow no matter how far the vertices are from the source.
+A larger $\beta$ now only means a narrower window and more steps.
 
-The soft-min therefore never overestimates the true minimum, and its error is at most $\log(k)/\beta$.
-Because $T_\beta^{-1}$ followed by $T_\beta$ is the identity, chaining transformed products without decoding in between yields a soft-min over every walk combined so far.
-In that case $k$ is the number of walks reaching a vertex, which can be very large.
+Results from different steps are combined with an exact minimum, so the error of the soft-min does not pile up across steps.
+It can still pile up around a cycle: if the cycle's edges are lighter than $\log(k)/\beta$, its distances keep decreasing and the solver runs until the iteration cap.
+With unit weights this happens when $\beta$ is below about $\log$ of the largest in-degree. On web-Google, $\beta = 2$ never converges, while $\beta = 8$ finds every reachable vertex with a maximum error of 1.02.
 
-**Underflow.** In single precision, $e^{-\beta x}$ drops below the smallest normal number when $\beta x > 87.3$ and loses precision as a subnormal, then rounds to zero when $\beta x > 103.3$.
-A vertex whose transformed distance underflows to zero decodes as $\infty$ and looks unreachable.
-Double precision moves these thresholds to about $708.4$ and $744.4$.
+## Known Problems
 
-**The trade-off.** If $D$ is the largest finite distance, keeping every value in the normal range requires $\beta \le 87.3 / D$, which makes the error bound for the farthest vertex at least $D \log(k) / 87.3$.
-Relative to $D$, the guaranteed error is roughly $\log(k) / 87.3$ no matter which $\beta$ is chosen, so increasing $\beta$ trades approximation error for underflow rather than removing it.
+The default $\beta = 2$ is below this threshold on most graphs. In the benchmark sweep, `tropical_apx` drifted on 7 of the 12 graphs: 3 runs reached the iteration cap after 20 to 46 seconds, and 4 were stopped after a minute, where the exact solvers take milliseconds. On web-NotreDame it also missed 412 reachable vertices.
+The sweep cannot pick a better $\beta$ yet, because its trial command passes no `--beta` and `sssp` rejects that option for the other solvers.
+The sweep also records only timings, so the accuracy of `tropical_apx` has been checked by hand on a few graphs but is not measured systematically.

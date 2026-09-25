@@ -99,6 +99,17 @@ Run cuGraph on the same input:
 ./build/sssp data/web-Google.csrbin --algorithm cugraph --repetitions 1
 ```
 
+## Metrics
+
+Each run prints the time in seconds of the following steps:
+
+- `setup`: one-time preparation on the GPU, such as allocating memory and uploading the graph.
+- `kernel`: computing the distances, summed over all repetitions.
+- `download`: copying the distances back to the host.
+- `end_to_end`: the whole solver call, which is roughly the sum of the three above.
+
+None of them include loading the graph from disk, creating the CUDA context, or transposing the graph.
+
 ## cuGraph dependency
 
 The `cugraph` backend requires a separate [RAPIDS libcugraph installation](https://docs.rapids.ai/api/cugraph/legacy/installation/getting_cugraph/). CMake enables it when it finds `cugraph::cugraph_c`.
