@@ -1,7 +1,6 @@
 BUILD_DIR := build
 DATA_DIR := data
 CONVERTER := $(BUILD_DIR)/graph_convert
-SNAP_URL := 
 GRAPH_NAMES := \
 	web-Google \
 	roadNet-CA \
@@ -18,13 +17,15 @@ GRAPH_NAMES := \
 
 CSR_BINARIES := $(GRAPH_NAMES:%=$(DATA_DIR)/%.csrbin)
 
-.PHONY: all clean inputs
+.PHONY: all clean inputs inputs-large
 
 all:
 	cmake --preset default
 	cmake --build --preset default -j$$(nproc)
 
 inputs: $(CSR_BINARIES)
+
+inputs-large: $(DATA_DIR)/com-friendster.ungraph.csrbin $(DATA_DIR)/com-orkut.ungraph.csrbin
 
 $(CONVERTER):
 	cmake --preset default
@@ -35,6 +36,9 @@ $(DATA_DIR):
 
 $(DATA_DIR)/%.txt.gz: | $(DATA_DIR)
 	curl --fail --location --retry 3 --output $@ https://snap.stanford.edu/data/$*.txt.gz
+
+$(DATA_DIR)/com-%.ungraph.txt.gz: | $(DATA_DIR)
+	curl --fail --location --retry 3 --output $@ https://snap.stanford.edu/data/bigdata/communities/com-$*.ungraph.txt.gz
 
 $(DATA_DIR)/%.txt: $(DATA_DIR)/%.txt.gz
 	gzip --decompress --stdout $< >$@.tmp
