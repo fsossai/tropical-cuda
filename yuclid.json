@@ -6,7 +6,7 @@
     ]
   },
   "space": {
-    "input_graph": [
+    "graph": [
       {
         "name": "amazon0601",
         "value": "data/amazon0601.csrbin"
@@ -64,7 +64,7 @@
     ],
     "repetitions": null
   },
-  "trials": "${yuclid.workspace}/build/sssp ${yuclid.input_graph} --algorithm ${yuclid.solver} --repetitions ${yuclid.repetitions}",
+  "trials": "${yuclid.workspace}/build/sssp ${yuclid.graph} --algorithm ${yuclid.solver} --repetitions ${yuclid.repetitions}",
   "metrics": {
     "setup": "grep -E '^\\[scoped_timer\\] setup:' ${yuclid.@}.out | awk '{print $3}'",
     "kernel": "grep -E '^\\[stopwatch\\] kernel:' ${yuclid.@}.out | awk '{print $3}'",
@@ -72,7 +72,7 @@
     "end_to_end": "grep -E '^\\[scoped_timer\\] end_to_end:' ${yuclid.@}.out | awk '{print $3}'"
   },
   "order": [
-    "input_graph",
+    "graph",
     "solver",
     "repetitions"
   ]
