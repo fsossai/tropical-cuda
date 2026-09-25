@@ -1,0 +1,81 @@
+{
+  "setup": {
+    "global": [
+      "make all",
+      "make inputs"
+    ]
+  },
+  "space": {
+    "input_graph": [
+      {
+        "name": "amazon0601",
+        "value": "data/amazon0601.csrbin"
+      },
+      {
+        "name": "email_euall",
+        "value": "data/email-EuAll.csrbin"
+      },
+      {
+        "name": "roadnet_ca",
+        "value": "data/roadNet-CA.csrbin"
+      },
+      {
+        "name": "roadnet_pa",
+        "value": "data/roadNet-PA.csrbin"
+      },
+      {
+        "name": "roadnet_tx",
+        "value": "data/roadNet-TX.csrbin"
+      },
+      {
+        "name": "livejournal",
+        "value": "data/soc-LiveJournal1.csrbin"
+      },
+      {
+        "name": "soc_pokec_relationships",
+        "value": "data/soc-pokec-relationships.csrbin"
+      },
+      {
+        "name": "web_berkstan",
+        "value": "data/web-BerkStan.csrbin"
+      },
+      {
+        "name": "web_google",
+        "value": "data/web-Google.csrbin"
+      },
+      {
+        "name": "web_notredame",
+        "value": "data/web-NotreDame.csrbin"
+      },
+      {
+        "name": "web_stanford",
+        "value": "data/web-Stanford.csrbin"
+      },
+      {
+        "name": "wiki_talk",
+        "value": "data/wiki-Talk.csrbin"
+      },
+      {
+        "name": "ego_gplus",
+        "value": "data/ego-Gplus.csrbin"
+      }
+    ],
+    "solver": [
+      "tropical_exact",
+      "tropical_apx",
+      "cusparse",
+      "cugraph"
+    ],
+    "repetitions": null
+  },
+  "trials": "${yuclid.workspace}/build/sssp ${yuclid.input_graph} --algorithm ${yuclid.solver} --repetitions ${yuclid.repetitions}",
+  "metrics": {
+    "kernel": "grep -E '^\\[stopwatch\\] kernel:' ${yuclid.@}.out | awk '{print $3}'",
+    "end_to_end": "grep -E '^\\[scoped_timer\\] end_to_end:' ${yuclid.@}.out | awk '{print $3}'"
+  },
+  "order": [
+    "input_graph",
+    "solver",
+    "repetitions"
+  ]
+}

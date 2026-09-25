@@ -14,7 +14,7 @@ GRAPH_NAMES := \
 	roadNet-PA \
 	roadNet-TX \
 	web-Stanford \
-	soc-Pokec \
+	soc-pokec-relationships \
 	ego-Gplus
 
 CSR_BINARIES := $(GRAPH_NAMES:%=$(DATA_DIR)/%.csrbin)

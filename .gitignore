@@ -8,3 +8,4 @@ build/
 compile_commands.json
 data/*.csrbin
 data/*.txt
+data/*.txt.gz
