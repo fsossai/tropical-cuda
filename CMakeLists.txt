@@ -18,11 +18,12 @@ add_executable(tropical_sssp
   src/tropical_common.cu
   src/tropical_exact.cu
   src/tropical_apx.cu
+  src/cusparse_solver.cu
 )
 set_target_properties(tropical_sssp PROPERTIES OUTPUT_NAME sssp)
 target_compile_features(tropical_sssp PRIVATE cxx_std_17 cuda_std_17)
 target_include_directories(tropical_sssp PRIVATE ${timers_SOURCE_DIR}/include src)
-target_link_libraries(tropical_sssp PRIVATE CUDA::cudart CUDA::cusparse)
+target_link_libraries(tropical_sssp PRIVATE CUDA::cudart CUDA::cusparse CUDA::nvrtc)
 
 add_executable(graph_convert
   src/graph_convert.cpp

@@ -1,4 +1,5 @@
 #include "cugraph_solver.hpp"
+#include "cusparse_solver.cuh"
 #include "graph.hpp"
 #include "graph_binary.hpp"
 #include "tropical_apx.cuh"
@@ -42,7 +43,8 @@ void print_usage(const char* program) {
             << "\n"
             << "Options:\n"
             << "  --source NODE          Source vertex; defaults to the first edge source\n"
-            << "  --algorithm NAME       tropical_exact (default), tropical_apx, cugraph\n"
+            << "  --algorithm NAME       tropical_exact (default), tropical_apx, cusparse,\n"
+            << "                         cugraph\n"
             << "  --weights MODE         unit (default) or weighted\n"
             << "  --repetitions N        Number of SSSP runs (default: 1)\n"
             << "  --max-iterations N     Maximum Bellman-Ford iterations\n"
@@ -101,7 +103,7 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--algorithm") {
       options.algorithm = require_value();
       if (options.algorithm != "cugraph" && options.algorithm != "tropical_exact" &&
-          options.algorithm != "tropical_apx") {
+          options.algorithm != "tropical_apx" && options.algorithm != "cusparse") {
         throw std::runtime_error("unknown algorithm: " + options.algorithm);
       }
     } else if (argument == "--weights") {
@@ -231,7 +233,8 @@ int main(int argc, char** argv) {
               << "source  : " << source << '\n'
               << "algorithm: " << options.algorithm << '\n';
 
-    if (options.algorithm == "tropical_exact" || options.algorithm == "tropical_apx") {
+    if (options.algorithm == "tropical_exact" || options.algorithm == "tropical_apx" ||
+        options.algorithm == "cusparse") {
       Stopwatch sw_transpose("transpose", /*stats=*/false);
       ScopedTimer st_transpose(sw_transpose);
       graph = transpose_csr_with_cusparse(graph);
@@ -246,6 +249,8 @@ int main(int argc, char** argv) {
       } else if (options.algorithm == "tropical_exact") {
         distances =
             run_tropical_exact_sssp(graph, source, options.repetitions, options.max_iterations);
+      } else if (options.algorithm == "cusparse") {
+        distances = run_cusparse_sssp(graph, source, options.repetitions, options.max_iterations);
       } else {
         distances =
             run_tropical_apx_sssp(graph, source, options.repetitions, options.max_iterations,
