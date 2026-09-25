@@ -1,9 +1,9 @@
 # Tropical Shortest Paths with CUDA
 
-Did you know that you can solve the single-source shortest-path problem with matrix multiplication?
+Did you know that you can solve the Single-Source Shortest Path problem via matrix-vector multiplication?
 
 For this project I want to implement an algorithm that I will refer to as "tropical" and compare it to cuGraph's implementation.
-The tropical algorithm requires a variation of SpMV that cuSPARSE does not provide.
+The tropical algorithm requires a variation of SpMV that cuSPARSE does not provide (see below).
 
 Here, I want answer a few practical questions:
 
@@ -12,28 +12,41 @@ Here, I want answer a few practical questions:
 
 I evaluate these questions on graphs from the [SNAP dataset collection](https://snap.stanford.edu/data/).
 
-## Background
+## Tropical SpMV
+
+### The Exact Formulation
+
+A matrix-vector product computes each output element by combining a matrix row with an input vector. In ordinary arithmetic and in a generic algebraic form, respectively, it is:
+
+$$
+\begin{aligned}
+y_i &= \sum_j W_{ij} x_j
+&\qquad\qquad
+y_i &= \bigoplus_j \left(W_{ij} \otimes x_j\right).
+\end{aligned}
+$$
+
+On the left, $+$ is addition and juxtaposition is multiplication. On the right, $\oplus$ is the addition operation and $\otimes$ is the multiplication operation, which can be defined differently.
+For the min-plus, or [tropical](https://en.wikipedia.org/wiki/Tropical_semiring), semiring, they are:
+
+$$
+a \oplus b = \min(a, b)
+\qquad\qquad
+a \otimes b = a + b.
+$$
 
 Let $d_i$ be the best distance known so far for vertex $i$, and $w_{ij}$ be the cost of going from $j$ to $i$.
-One relaxation of the [Bellman-Ford](https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm) algorithm for a vertex $i$ can be written as follows:
+One [Bellman-Ford](https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm) relaxation is therefore a tropical matrix-vector product:
 
 $$
-c_i \leftarrow \min_{(i, j) \in E}\left(d_j + w_{ij}\right)
+d_i \leftarrow \bigoplus_j \left(w_{ij} \otimes d_j\right) = \min_j\left(w_{ij} + d_j\right).
 $$
 
-$$
-d_i \leftarrow \min\left(d_i, c_i\right).
-$$
+Here a missing edge has cost $\infty$ and $w_{ii} = 0$ for every vertex $i$.
+Repeating the product propagates distances through the graph. The idea is inspired by Michael Garland's paper, *Sparse matrix computations on manycore GPUs*.
 
-where a missing edge has cost $\infty$ and $w_{ii} = 0$ for every vertex $i$.
-Now if we take interpret matrix multiplication where scalar multiplication and addition and replaced by min and addition, respectively, then each relaxation of the algorithm becomes:
-$$
-\vec{d} \leftarrow W \vec{d}
-$$
+### An Approximate Formulation
 
-This new semiring is called min-plus, also called the [tropical semiring](https://en.wikipedia.org/wiki/Tropical_semiring)
-Repeating the product propagates distances through the graph.
-The idea is inspired by Michael Garland's paper, *Sparse matrix computations on manycore GPUs*.
 Because a graph's adjacency matrix is sparse, this operation is an SpMV, but cuSPARSE provides only ordinary arithmetic SpMV rather than the min-plus variant.
 One alternative is to transform the weights and distances so that conventional arithmetic SpMV approximates the tropical product.
 For a positive parameter $\beta$, define the forward transformation and its inverse as:
@@ -44,22 +57,32 @@ T_\beta(x) = e^{-\beta x}
 T_\beta^{-1}(z) = -\frac{1}{\beta}\log z.
 $$
 
-For two scalars $x$ and $y$, their ordinary sum is a product in the transformed space:
+Thanks to the property of exponentials, the ordinary sum of two scalars $x$ and $y$ is a product in the transformed space:
+
 $$
--\frac{1}{\beta}\log {e^{-\beta x} e^{-\beta y}} = -\frac{1}{\beta}\log e^{-\beta (x+y)} = x + y
+\quad T_\beta(x) T_\beta(y) = T_\beta(x+y) 
 $$
 
-This implements the $+$ operation of min-plus multiplication exactly, for every positive $\beta$.
-For the min operation, ordinary addition in the transformed space becomes equivalent in the limit:
+For the min operation, one can prove that ordinary addition in the transformed space becomes equivalent in the limit:
 
 $$
 \min(x, y) = \lim_{\beta \to \infty} T_\beta^{-1}\left(T_\beta(x) + T_\beta(y)\right).
 $$
 
-The transformation maps smaller distances to larger values. Therefore, as $\beta$ grows, the sum $T_\beta(x) + T_\beta(y)$ is dominated by the term associated with $\min(x, y)$; applying the inverse transformation then recovers that minimum.
+**Proof.** Let $\beta > 0$, $m = \min(x, y)$ and $d = |x - y|$. Factoring out $e^{-\beta m}$,
+
+$$
+T_\beta^{-1}\left(e^{-\beta x} + e^{-\beta y}\right)
+= -\frac{1}{\beta}\log\left(e^{-\beta m}\left(1 + e^{-\beta d}\right)\right)
+= m - \frac{1}{\beta}\log\left(1 + e^{-\beta d}\right).
+$$
+
+Letting $\beta \to \infty$, the squeeze theorem gives the limit $m = \min(x, y)$. $\blacksquare$
+As a result, the expression is a soft-min, and it approaches the true minimum as $\beta$ grows.
 
 Unfortunately, finite-precision arithmetic makes this transformation numerically fragile.
 As $\beta$ grows, the decoded result approaches the minimum, but large values can underflow the exponentials while small values give a less accurate approximation.
+
 
 ## Quick start
 
