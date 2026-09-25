@@ -1,11 +1,11 @@
 # Tropical Shortest Paths with CUDA
 
-Did you know that you can solve the Single-Source Shortest Path problem via matrix-vector multiplication?
+Did you know that you can solve the single-source shortest path (SSSP) problem via matrix-vector multiplication?
 
-For this project I want to implement an algorithm that I will refer to as "tropical" and compare it to cuGraph's implementation.
-The tropical algorithm requires a variation of SpMV that cuSPARSE does not provide (see below).
+This project implements an algorithm that I will refer to as "tropical" and compare it to cuGraph's implementation.
+The tropical algorithm requires a variation of SpMV that cuSPARSE's standard SpMV does not provide (see below).
 
-Here, I want answer a few practical questions:
+Here, I want to answer a few practical questions:
 
 - **Q1**: How does a tropical SSSP solver compare with the cuGraph implementation?
 - **Q2**: Can optimized sparse-matrix libraries such as cuSPARSE solve SSSP without a custom tropical matrix multiply?
@@ -26,7 +26,7 @@ y_i &= \bigoplus_j \left(W_{ij} \otimes x_j\right).
 \end{aligned}
 $$
 
-On the left, $+$ is addition and juxtaposition is multiplication. On the right, $\oplus$ is the addition operation and $\otimes$ is the multiplication operation, which can be defined differently.
+On the left, $+$ is addition and juxtaposition is multiplication. On the right, $\oplus$ is the addition operation and $\otimes$ is the multiplication operation, which a semiring is free to redefine.
 For the min-plus, or [tropical](https://en.wikipedia.org/wiki/Tropical_semiring), semiring, they are:
 
 $$
@@ -47,7 +47,8 @@ Repeating the product propagates distances through the graph. The idea is inspir
 
 ### An Approximate Formulation
 
-Because a graph's adjacency matrix is sparse, this operation is an SpMV, but cuSPARSE provides only ordinary arithmetic SpMV rather than the min-plus variant.
+Because a graph's adjacency matrix is sparse, this operation is an SpMV, but cuSPARSE's standard SpMV supports only ordinary arithmetic rather than the min-plus variant.
+Its preview `cusparseSpMMOp` API accepts custom operators, which the `cusparse` backend uses to compute the exact min-plus product.
 One alternative is to transform the weights and distances so that conventional arithmetic SpMV approximates the tropical product.
 For a positive parameter $\beta$, define the forward transformation and its inverse as:
 
@@ -60,7 +61,7 @@ $$
 Thanks to the property of exponentials, the ordinary sum of two scalars $x$ and $y$ is a product in the transformed space:
 
 $$
-\quad T_\beta(x) T_\beta(y) = T_\beta(x+y) 
+T_\beta(x) T_\beta(y) = T_\beta(x+y)
 $$
 
 For the min operation, one can prove that ordinary addition in the transformed space becomes equivalent in the limit:
@@ -69,20 +70,27 @@ $$
 \min(x, y) = \lim_{\beta \to \infty} T_\beta^{-1}\left(T_\beta(x) + T_\beta(y)\right).
 $$
 
-**Proof.** Let $\beta > 0$, $m = \min(x, y)$ and $d = |x - y|$. Factoring out $e^{-\beta m}$,
-
-$$
-T_\beta^{-1}\left(e^{-\beta x} + e^{-\beta y}\right)
-= -\frac{1}{\beta}\log\left(e^{-\beta m}\left(1 + e^{-\beta d}\right)\right)
-= m - \frac{1}{\beta}\log\left(1 + e^{-\beta d}\right).
-$$
-
-Letting $\beta \to \infty$, the squeeze theorem gives the limit $m = \min(x, y)$. $\blacksquare$
 As a result, the expression is a soft-min, and it approaches the true minimum as $\beta$ grows.
+Unfortunately, finite-precision arithmetic makes this transformation numerically fragile, as the next section explains.
 
-Unfortunately, finite-precision arithmetic makes this transformation numerically fragile.
-As $\beta$ grows, the decoded result approaches the minimum, but large values can underflow the exponentials while small values give a less accurate approximation.
+### Floating-Point Considerations
 
+**Approximation error.** For $k$ terms with minimum $m$, the transformed sum satisfies $e^{-\beta m} \le \sum_j e^{-\beta x_j} \le k\,e^{-\beta m}$, so decoding gives
+
+$$
+m - \frac{\log k}{\beta} \le T_\beta^{-1}\left(\sum_j T_\beta(x_j)\right) \le m.
+$$
+
+The soft-min therefore never overestimates the true minimum, and its error is at most $\log(k)/\beta$.
+Because $T_\beta^{-1}$ followed by $T_\beta$ is the identity, chaining transformed products without decoding in between yields a soft-min over every walk combined so far.
+In that case $k$ is the number of walks reaching a vertex, which can be very large.
+
+**Underflow.** In single precision, $e^{-\beta x}$ drops below the smallest normal number when $\beta x > 87.3$ and loses precision as a subnormal, then rounds to zero when $\beta x > 103.3$.
+A vertex whose transformed distance underflows to zero decodes as $\infty$ and looks unreachable.
+Double precision moves these thresholds to about $708.4$ and $744.4$.
+
+**The trade-off.** If $D$ is the largest finite distance, keeping every value in the normal range requires $\beta \le 87.3 / D$, which makes the error bound for the farthest vertex at least $D \log(k) / 87.3$.
+Relative to $D$, the guaranteed error is roughly $\log(k) / 87.3$ no matter which $\beta$ is chosen, so increasing $\beta$ trades approximation error for underflow rather than removing it.
 
 ## Quick start
 
@@ -116,22 +124,5 @@ The `cugraph` backend requires a separate [RAPIDS libcugraph installation](https
 
 ## References
 
-The tropical sparse-matrix approach is motivated by the following work:
-
-```latex
-@inproceedings{,
-  title={Sparse matrix computations on manycore GPU's},
-  author={Garland, Michael},
-  booktitle={Proceedings of the 45th annual design automation conference},
-  pages={2--6},
-  year={2008}
-}
-@inproceedings{davidson2014work,
-  title={Work-efficient parallel GPU methods for single-source shortest paths},
-  author={Davidson, Andrew and Baxter, Sean and Garland, Michael and Owens, John D},
-  booktitle={2014 IEEE 28th International Parallel and Distributed Processing Symposium},
-  pages={349--359},
-  year={2014},
-  organization={IEEE}
-}
-```
+- Michael Garland. "Sparse matrix computations on manycore GPU's." *Proceedings of the 45th Annual Design Automation Conference (DAC)*, pp. 2–6, 2008.
+- Andrew Davidson, Sean Baxter, Michael Garland, and John D. Owens. "Work-efficient parallel GPU methods for single-source shortest paths." *2014 IEEE 28th International Parallel and Distributed Processing Symposium (IPDPS)*, pp. 349–359, IEEE, 2014.
