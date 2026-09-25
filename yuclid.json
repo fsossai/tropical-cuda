@@ -61,20 +61,22 @@
       "tropical_apx",
       "cusparse",
       "cugraph"
-    ],
-    "repetitions": null
+    ]
   },
-  "trials": "${yuclid.workspace}/build/sssp ${yuclid.graph} --algorithm ${yuclid.solver} --repetitions ${yuclid.repetitions}",
+  "trials": [
+    {
+      "command": "${yuclid.workspace}/build/sssp ${yuclid.graph} --solver ${yuclid.solver} --runs ${yuclid.repeat}",
+      "repeats": true
+    }
+  ],
   "metrics": {
     "setup": "grep -E '^\\[scoped_timer\\] setup:' ${yuclid.@}.out | awk '{print $3}'",
-    "kernel": "grep -E '^\\[stopwatch\\] kernel:' ${yuclid.@}.out | awk '{print $3}'",
-    "kernel.rep": "grep -E '^\\[scoped_timer\\] kernel.rep:' ${yuclid.@}.out | awk '{print $3}'",
+    "kernel": "grep -E '^\\[scoped_timer\\] kernel:' ${yuclid.@}.out | awk '{print $3}'",
     "download": "grep -E '^\\[scoped_timer\\] download:' ${yuclid.@}.out | awk '{print $3}'",
     "end_to_end": "grep -E '^\\[scoped_timer\\] end_to_end:' ${yuclid.@}.out | awk '{print $3}'"
   },
   "order": [
     "graph",
-    "solver",
-    "repetitions"
+    "solver"
   ]
 }

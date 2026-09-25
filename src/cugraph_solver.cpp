@@ -117,14 +117,12 @@ std::vector<float> run_cugraph_sssp(CsrGraphView graph, uint32_t source, uint32_
   CHECK_CUDA(cudaDeviceSynchronize());
   TIMER_STOP();
 
-  Stopwatch sw_kernel("kernel", /*stats=*/false);
   Paths paths(nullptr, &cugraph_paths_result_free);
   for (uint32_t run = 0; run < repetitions; ++run) {
     paths.reset();
     cugraph_paths_result_t* raw_paths = nullptr;
     {
-      ScopedTimer st1(sw_kernel);
-      ScopedTimer st2("kernel.rep");
+      ScopedTimer st_kernel("kernel");
       error = nullptr;
       const auto code =
           cugraph_sssp(handle.get(), device_graph.get(), source, std::numeric_limits<float>::max(),

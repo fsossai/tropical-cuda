@@ -90,13 +90,13 @@ make inputs
 Run the hand-written tropical solver:
 
 ```sh
-./build/sssp data/web-Google.csrbin --algorithm tropical_exact --repetitions 1
+./build/sssp data/web-Google.csrbin --solver tropical_exact --runs 1
 ```
 
 Run cuGraph on the same input:
 
 ```sh
-./build/sssp data/web-Google.csrbin --algorithm cugraph --repetitions 1
+./build/sssp data/web-Google.csrbin --solver cugraph --runs 1
 ```
 
 ## Metrics
@@ -104,9 +104,9 @@ Run cuGraph on the same input:
 Each run prints the time in seconds of the following steps:
 
 - `setup`: one-time preparation on the GPU, such as allocating memory and uploading the graph.
-- `kernel`: computing the distances, summed over all repetitions.
+- `kernel`: computing the distances, printed once per repetition.
 - `download`: copying the distances back to the host.
-- `end_to_end`: the whole solver call, which is roughly the sum of the three above.
+- `end_to_end`: the whole solver call, which is roughly `setup`, plus every `kernel`, plus `download`.
 
 None of them include loading the graph from disk, creating the CUDA context, or transposing the graph.
 

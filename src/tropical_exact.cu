@@ -119,10 +119,9 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
   float* next = device_b.data();
   uint32_t iterations_performed = 0;
 
-  Stopwatch sw_kernel("kernel", false);
   for (uint32_t repetition = 0; repetition < repetitions; ++repetition) {
-    ScopedTimer st1(sw_kernel);
-    ScopedTimer st2("kernel.rep");
+    ScopedTimer st_kernel("kernel");
+    iterations_performed = 0;
     CHECK_CUDA(cudaMemcpy(current, initial.data(), vertex_bytes, cudaMemcpyHostToDevice));
     int changed = 1;
 

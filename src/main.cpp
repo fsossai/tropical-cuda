@@ -30,7 +30,7 @@ namespace {
 struct Options {
   std::string graph_path;
   std::optional<uint32_t> source;
-  std::string algorithm = "tropical_exact";
+  std::string solver = "tropical_exact";
   WeightMode weights = WeightMode::unit;
   std::optional<std::string> output_path;
   uint32_t repetitions = 1;
@@ -43,10 +43,10 @@ void print_usage(const char* program) {
             << "\n"
             << "Options:\n"
             << "  --source NODE          Source vertex; defaults to the first edge source\n"
-            << "  --algorithm NAME       tropical_exact (default), tropical_apx, cusparse,\n"
+            << "  --solver NAME          tropical_exact (default), tropical_apx, cusparse,\n"
             << "                         cugraph\n"
             << "  --weights MODE         unit (default) or weighted\n"
-            << "  --repetitions N        Number of SSSP runs (default: 1)\n"
+            << "  --runs N               Number of SSSP runs (default: 1)\n"
             << "  --max-iterations N     Maximum Bellman-Ford iterations\n"
             << "  --beta VALUE           Positive tropical_apx approximation parameter\n"
             << "  --output PATH          Write distances to PATH\n"
@@ -100,11 +100,11 @@ Options parse_options(int argc, char** argv) {
     }
     if (argument == "--source") {
       options.source = parse_uint32(require_value(), argument);
-    } else if (argument == "--algorithm") {
-      options.algorithm = require_value();
-      if (options.algorithm != "cugraph" && options.algorithm != "tropical_exact" &&
-          options.algorithm != "tropical_apx" && options.algorithm != "cusparse") {
-        throw std::runtime_error("unknown algorithm: " + options.algorithm);
+    } else if (argument == "--solver") {
+      options.solver = require_value();
+      if (options.solver != "cugraph" && options.solver != "tropical_exact" &&
+          options.solver != "tropical_apx" && options.solver != "cusparse") {
+        throw std::runtime_error("unknown solver: " + options.solver);
       }
     } else if (argument == "--weights") {
       const auto mode = require_value();
@@ -115,10 +115,10 @@ Options parse_options(int argc, char** argv) {
       } else {
         throw std::runtime_error("unknown weight mode: " + std::string(mode));
       }
-    } else if (argument == "--repetitions") {
+    } else if (argument == "--runs") {
       options.repetitions = parse_uint32(require_value(), argument);
       if (options.repetitions == 0) {
-        throw std::runtime_error("--repetitions must be positive");
+        throw std::runtime_error("--runs must be positive");
       }
     } else if (argument == "--max-iterations") {
       options.max_iterations = parse_uint32(require_value(), argument);
@@ -184,10 +184,10 @@ int main(int argc, char** argv) {
       return 1;
     }
 
-    if (options.algorithm == "cugraph" && options.max_iterations) {
+    if (options.solver == "cugraph" && options.max_iterations) {
       throw std::runtime_error("--max-iterations is unsupported by cugraph");
     }
-    if (options.algorithm != "tropical_apx" && options.beta) {
+    if (options.solver != "tropical_apx" && options.beta) {
       throw std::runtime_error("--beta is only supported by tropical_apx");
     }
 
@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
     uint32_t source = 0;
     if (is_csr_binary_path(options.graph_path)) {
       TIMER_START("file_io");
-      if (options.algorithm == "cugraph") {
+      if (options.solver == "cugraph") {
         mapped_graph = std::make_unique<MappedCsrGraph>(options.graph_path);
         graph_view = mapped_graph->view();
         source = options.source.value_or(mapped_graph->default_source());
@@ -236,10 +236,10 @@ int main(int argc, char** argv) {
               << "vertices: " << graph_view.vertex_count << '\n'
               << "edges   : " << graph_view.edge_count << '\n'
               << "source  : " << source << '\n'
-              << "algorithm: " << options.algorithm << '\n';
+              << "solver  : " << options.solver << '\n';
 
-    if (options.algorithm == "tropical_exact" || options.algorithm == "tropical_apx" ||
-        options.algorithm == "cusparse") {
+    if (options.solver == "tropical_exact" || options.solver == "tropical_apx" ||
+        options.solver == "cusparse") {
       Stopwatch sw_transpose("transpose", /*stats=*/false);
       ScopedTimer st_transpose(sw_transpose);
       graph = transpose_csr_with_cusparse(graph);
@@ -249,12 +249,12 @@ int main(int argc, char** argv) {
     std::vector<float> distances;
     {
       ScopedTimer st("end_to_end");
-      if (options.algorithm == "cugraph") {
+      if (options.solver == "cugraph") {
         distances = run_cugraph_sssp(graph_view, source, options.repetitions);
-      } else if (options.algorithm == "tropical_exact") {
+      } else if (options.solver == "tropical_exact") {
         distances =
             run_tropical_exact_sssp(graph, source, options.repetitions, options.max_iterations);
-      } else if (options.algorithm == "cusparse") {
+      } else if (options.solver == "cusparse") {
         distances = run_cusparse_sssp(graph, source, options.repetitions, options.max_iterations);
       } else {
         distances =

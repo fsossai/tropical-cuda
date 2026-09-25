@@ -236,10 +236,9 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
       thrust::make_zip_iterator(thrust::make_tuple(distances_begin, pending_begin));
   const auto vertices_end = vertices_begin + graph.vertex_count;
 
-  Stopwatch sw_kernel("kernel", false);
   for (uint32_t repetition = 0; repetition < repetitions; ++repetition) {
-    ScopedTimer st_kernel(sw_kernel);
-    ScopedTimer st_repetition("kernel.rep");
+    ScopedTimer st_kernel("kernel");
+    iterations_performed = 0;
     CHECK_CUDA(
         cudaMemcpy(device_distances.data(), initial.data(), vertex_bytes, cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(device_pending.data(), initial_pending.data(), graph.vertex_count,
