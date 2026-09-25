@@ -104,7 +104,9 @@ MappedCsrGraph::MappedCsrGraph(const std::string& path) {
     throw std::runtime_error("could not stat binary CSR graph: " + path);
   }
   mapping_size_ = static_cast<size_t>(status.st_size);
-  mapping_ = mmap(nullptr, mapping_size_, PROT_READ, MAP_PRIVATE, file_descriptor_, 0);
+  // Populate the whole mapping now so file reads are charged to loading, not to the solver.
+  mapping_ =
+      mmap(nullptr, mapping_size_, PROT_READ, MAP_PRIVATE | MAP_POPULATE, file_descriptor_, 0);
   if (mapping_ == MAP_FAILED) {
     mapping_ = nullptr;
     close(file_descriptor_);

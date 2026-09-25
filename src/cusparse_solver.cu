@@ -1,6 +1,7 @@
 #include "cusparse_solver.cuh"
 #include "tropical_common.cuh"
 
+#include "deferred_timer.hpp"
 #include <timers/ScopedTimer.hpp>
 
 #include <cuda_runtime.h>
@@ -181,8 +182,7 @@ private:
 // Iterate cuSPARSE min-plus relaxations over incoming CSR rows until distances stop changing.
 std::vector<float> run_cusparse_sssp(const CsrGraph& graph, uint32_t source, uint32_t repetitions,
                                      std::optional<uint32_t> max_iterations) {
-  Stopwatch sw_memcpy("kernel.memcpy", /*stats=*/false);
-
+  DeferredTimer teardown("teardown");
   if (graph.vertex_count == 0 || source >= graph.vertex_count || repetitions == 0 ||
       graph.row_offsets.size() != static_cast<size_t>(graph.vertex_count) + 1 ||
       graph.edge_count != graph.column_indices.size() ||
@@ -196,13 +196,13 @@ std::vector<float> run_cusparse_sssp(const CsrGraph& graph, uint32_t source, uin
   const auto edge_bytes = graph.column_indices.size() * sizeof(uint32_t);
   const auto weight_bytes = graph.weights.size() * sizeof(float);
 
+  TIMER_START("setup");
   DeviceBuffer<uint32_t> device_offsets(graph.row_offsets.size());
   DeviceBuffer<uint32_t> device_columns(graph.column_indices.size());
   DeviceBuffer<float> device_weights(graph.weights.size());
   DeviceBuffer<float> device_a(graph.vertex_count);
   DeviceBuffer<float> device_b(graph.vertex_count);
 
-  sw_memcpy.start();
   CHECK_CUDA(cudaMemcpy(device_offsets.data(), graph.row_offsets.data(), offset_bytes,
                         cudaMemcpyHostToDevice));
   if (!graph.column_indices.empty()) {
@@ -211,13 +211,10 @@ std::vector<float> run_cusparse_sssp(const CsrGraph& graph, uint32_t source, uin
     CHECK_CUDA(cudaMemcpy(device_weights.data(), graph.weights.data(), weight_bytes,
                           cudaMemcpyHostToDevice));
   }
-  sw_memcpy.stop();
-
-  Stopwatch sw_plan("plan", /*stats=*/false);
-  sw_plan.start();
   CusparseSpmmOp spmm(graph, device_offsets.data(), device_columns.data(), device_weights.data(),
                       device_a.data(), device_b.data());
-  sw_plan.stop();
+  CHECK_CUDA(cudaDeviceSynchronize());
+  TIMER_STOP();
 
   std::vector<float> initial(graph.vertex_count,
                              flip_encoding(std::numeric_limits<float>::infinity()));
@@ -225,17 +222,16 @@ std::vector<float> run_cusparse_sssp(const CsrGraph& graph, uint32_t source, uin
   std::vector<float> result(graph.vertex_count);
   const uint32_t iterations = max_iterations.value_or(graph.vertex_count - 1);
   uint32_t iterations_performed = 0;
+  float* current = device_a.data();
 
   Stopwatch sw_kernel("kernel", false);
   for (uint32_t repetition = 0; repetition < repetitions; ++repetition) {
     ScopedTimer st_kernel(sw_kernel);
     ScopedTimer st_repetition("kernel.rep");
-    sw_memcpy.start();
     CHECK_CUDA(cudaMemcpy(device_a.data(), initial.data(), vertex_bytes, cudaMemcpyHostToDevice));
-    sw_memcpy.stop();
 
     bool forward = true;
-    float* current = device_a.data();
+    current = device_a.data();
     float* next = device_b.data();
     bool changed = true;
 
@@ -250,15 +246,15 @@ std::vector<float> run_cusparse_sssp(const CsrGraph& graph, uint32_t source, uin
       forward = !forward;
       ++iterations_performed;
     }
-
-    sw_memcpy.start();
-    CHECK_CUDA(cudaMemcpy(result.data(), current, vertex_bytes, cudaMemcpyDeviceToHost));
-    sw_memcpy.stop();
   }
 
+  TIMER_START("download");
+  CHECK_CUDA(cudaMemcpy(result.data(), current, vertex_bytes, cudaMemcpyDeviceToHost));
   for (float& distance : result) {
     distance = flip_encoding(distance);
   }
+  TIMER_STOP();
+  teardown.start();
 
   std::cout << "iterations: " << iterations_performed << '\n';
   return result;

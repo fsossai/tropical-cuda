@@ -1,3 +1,4 @@
+#include "deferred_timer.hpp"
 #include "tropical_common.cuh"
 #include "tropical_exact.cuh"
 #include <timers/ScopedTimer.hpp>
@@ -73,8 +74,7 @@ __global__ void tropical_spmv(const uint32_t* __restrict__ row_offsets,
 std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t source,
                                            uint32_t repetitions,
                                            std::optional<uint32_t> max_iterations) {
-  Stopwatch sw_memcpy("kernel.memcpy", /*stats=*/false);
-
+  DeferredTimer teardown("teardown");
   if (graph.vertex_count == 0 || source >= graph.vertex_count ||
       graph.row_offsets.size() != static_cast<size_t>(graph.vertex_count) + 1 ||
       graph.edge_count != graph.column_indices.size() ||
@@ -88,6 +88,7 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
   const auto edge_bytes = graph.column_indices.size() * sizeof(uint32_t);
   const auto weight_bytes = graph.weights.size() * sizeof(float);
 
+  TIMER_START("setup");
   DeviceBuffer<uint32_t> device_offsets(graph.row_offsets.size());
   DeviceBuffer<uint32_t> device_columns(graph.column_indices.size());
   DeviceBuffer<float> device_weights(graph.weights.size());
@@ -95,7 +96,6 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
   DeviceBuffer<float> device_b(graph.vertex_count);
   DeviceBuffer<int> device_changed(1);
 
-  sw_memcpy.start();
   CHECK_CUDA(cudaMemcpy(device_offsets.data(), graph.row_offsets.data(), offset_bytes,
                         cudaMemcpyHostToDevice));
   if (!graph.column_indices.empty()) {
@@ -104,7 +104,8 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
     CHECK_CUDA(cudaMemcpy(device_weights.data(), graph.weights.data(), weight_bytes,
                           cudaMemcpyHostToDevice));
   }
-  sw_memcpy.stop();
+  CHECK_CUDA(cudaDeviceSynchronize());
+  TIMER_STOP();
 
   std::vector<float> initial(graph.vertex_count, std::numeric_limits<float>::infinity());
   initial[source] = 0.0f;
@@ -116,17 +117,13 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
 
   float* current = device_a.data();
   float* next = device_b.data();
-  current = device_a.data();
-  next = device_b.data();
   uint32_t iterations_performed = 0;
 
   Stopwatch sw_kernel("kernel", false);
   for (uint32_t repetition = 0; repetition < repetitions; ++repetition) {
     ScopedTimer st1(sw_kernel);
     ScopedTimer st2("kernel.rep");
-    sw_memcpy.start();
     CHECK_CUDA(cudaMemcpy(current, initial.data(), vertex_bytes, cudaMemcpyHostToDevice));
-    sw_memcpy.stop();
     int changed = 1;
 
     for (uint32_t iteration = 0; changed && (iteration < iterations); ++iteration) {
@@ -136,16 +133,16 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
                                                    graph.vertex_count, device_changed.data());
       CHECK_CUDA(cudaGetLastError());
       CHECK_CUDA(cudaDeviceSynchronize());
-      sw_memcpy.start();
       CHECK_CUDA(cudaMemcpy(&changed, device_changed.data(), sizeof(int), cudaMemcpyDeviceToHost));
-      sw_memcpy.stop();
       std::swap(current, next);
       ++iterations_performed;
     }
-    sw_memcpy.start();
-    CHECK_CUDA(cudaMemcpy(result.data(), current, vertex_bytes, cudaMemcpyDeviceToHost));
-    sw_memcpy.stop();
   }
+
+  TIMER_START("download");
+  CHECK_CUDA(cudaMemcpy(result.data(), current, vertex_bytes, cudaMemcpyDeviceToHost));
+  TIMER_STOP();
+  teardown.start();
 
   std::cout << "iterations: " << iterations_performed << '\n';
   return result;

@@ -191,6 +191,11 @@ int main(int argc, char** argv) {
       throw std::runtime_error("--beta is only supported by tropical_apx");
     }
 
+    // Create the CUDA context up front so that no solver's timings include its one-time cost.
+    TIMER_START("cuda_init");
+    CHECK_CUDA(cudaFree(nullptr));
+    TIMER_STOP();
+
     CsrGraph graph;
     CsrGraphView graph_view;
     std::unique_ptr<MappedCsrGraph> mapped_graph;

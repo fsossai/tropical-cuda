@@ -1,5 +1,6 @@
 #include "cugraph_solver.hpp"
 #include "cuda_check.hpp"
+#include "deferred_timer.hpp"
 
 #include <memory>
 #include <timers/ScopedTimer.hpp>
@@ -81,11 +82,12 @@ bool cugraph_available() { return true; }
 
 // Build a cuGraph CSR graph and compute SSSP on the GPU for the requested runs.
 std::vector<float> run_cugraph_sssp(CsrGraphView graph, uint32_t source, uint32_t repetitions) {
+  DeferredTimer teardown("teardown");
   if (repetitions == 0) {
     throw std::runtime_error("cuGraph repetitions must be positive");
   }
 
-  TIMER_START("kernel.setup");
+  TIMER_START("setup");
   Handle handle(cugraph_create_resource_handle(nullptr), &cugraph_free_resource_handle);
   if (!handle) {
     throw std::runtime_error("cuGraph resource handle creation failed");
@@ -133,7 +135,7 @@ std::vector<float> run_cugraph_sssp(CsrGraphView graph, uint32_t source, uint32_
     paths.reset(raw_paths);
   }
 
-  TIMER_START("kernel.download");
+  TIMER_START("download");
   DeviceView vertices(cugraph_paths_result_get_vertices(paths.get()),
                       &cugraph_type_erased_device_array_view_free);
   DeviceView distances(cugraph_paths_result_get_distances(paths.get()),
@@ -172,6 +174,7 @@ std::vector<float> run_cugraph_sssp(CsrGraphView graph, uint32_t source, uint32_
                          : values[i];
   }
   TIMER_STOP();
+  teardown.start();
 
   return result;
 }

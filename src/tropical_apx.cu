@@ -1,6 +1,7 @@
 #include "tropical_apx.cuh"
 #include "tropical_common.cuh"
 
+#include "deferred_timer.hpp"
 #include <timers/ScopedTimer.hpp>
 
 #include <cuda_runtime.h>
@@ -159,9 +160,7 @@ __global__ void decode_and_relax(float beta, float shift, const float* __restric
 std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
                                          uint32_t repetitions,
                                          std::optional<uint32_t> max_iterations, float beta) {
-  Stopwatch sw_memcpy("kernel.memcpy", /*stats=*/false);
-  Stopwatch sw_encode("kernel.encode", /*stats=*/false);
-
+  DeferredTimer teardown("teardown");
   if (graph.vertex_count == 0 || source >= graph.vertex_count || repetitions == 0 ||
       graph.row_offsets.size() != static_cast<size_t>(graph.vertex_count) + 1 ||
       graph.edge_count != graph.column_indices.size() ||
@@ -169,6 +168,8 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
       (max_iterations && *max_iterations == 0) || !std::isfinite(beta) || beta <= 0.0f) {
     throw std::invalid_argument("invalid tropical approximate SSSP inputs");
   }
+
+  TIMER_START("setup");
 
   // Every quantity that goes through the SpMV must stay a normal float, meaning at least FLT_MIN,
   // which is about exp(-87.3). Below that, floats lose precision gradually and then become zero,
@@ -202,7 +203,6 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
   DeviceBuffer<float> device_encoded(graph.vertex_count);
   DeviceBuffer<float> device_products(graph.vertex_count);
 
-  sw_memcpy.start();
   CHECK_CUDA(cudaMemcpy(device_offsets.data(), graph.row_offsets.data(), offset_bytes,
                         cudaMemcpyHostToDevice));
   if (!graph.column_indices.empty()) {
@@ -211,7 +211,6 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
     CHECK_CUDA(cudaMemcpy(device_weights.data(), graph.weights.data(), weight_bytes,
                           cudaMemcpyHostToDevice));
   }
-  sw_memcpy.stop();
 
   std::vector<float> initial(graph.vertex_count, std::numeric_limits<float>::infinity());
   initial[source] = 0.0f;
@@ -224,15 +223,13 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
   const uint32_t e_blocks = (graph.edge_count + threads_per_block - 1) / threads_per_block;
   uint32_t iterations_performed = 0;
 
-  sw_encode.start();
   encode_weights<<<std::max(e_blocks, 1u), threads_per_block>>>(beta, device_weights.data(),
                                                                 graph.edge_count);
   CHECK_CUDA(cudaGetLastError());
-  CHECK_CUDA(cudaDeviceSynchronize());
-  sw_encode.stop();
-
   CusparseSpmv spmv(graph, device_offsets.data(), device_columns.data(), device_weights.data(),
                     device_encoded.data(), device_products.data());
+  CHECK_CUDA(cudaDeviceSynchronize());
+  TIMER_STOP();
   const auto distances_begin = thrust::device_pointer_cast(device_distances.data());
   const auto pending_begin = thrust::device_pointer_cast(device_pending.data());
   const auto vertices_begin =
@@ -243,12 +240,10 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
   for (uint32_t repetition = 0; repetition < repetitions; ++repetition) {
     ScopedTimer st_kernel(sw_kernel);
     ScopedTimer st_repetition("kernel.rep");
-    sw_memcpy.start();
     CHECK_CUDA(
         cudaMemcpy(device_distances.data(), initial.data(), vertex_bytes, cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(device_pending.data(), initial_pending.data(), graph.vertex_count,
                           cudaMemcpyHostToDevice));
-    sw_memcpy.stop();
 
     for (uint32_t iteration = 0; iteration < iterations; ++iteration) {
       // The shift is chosen fresh at every step as the smallest pending distance. Since all
@@ -273,11 +268,14 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
       ++iterations_performed;
     }
 
-    sw_memcpy.start();
-    CHECK_CUDA(
-        cudaMemcpy(result.data(), device_distances.data(), vertex_bytes, cudaMemcpyDeviceToHost));
-    sw_memcpy.stop();
+    CHECK_CUDA(cudaDeviceSynchronize());
   }
+
+  TIMER_START("download");
+  CHECK_CUDA(
+      cudaMemcpy(result.data(), device_distances.data(), vertex_bytes, cudaMemcpyDeviceToHost));
+  TIMER_STOP();
+  teardown.start();
 
   std::cout << "iterations: " << iterations_performed << '\n';
   return result;
