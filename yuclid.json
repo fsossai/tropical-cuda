@@ -2,7 +2,8 @@
   "setup": {
     "global": [
       "make all",
-      "make inputs"
+      "make inputs",
+      "make inputs-large"
     ]
   },
   "space": {
@@ -34,6 +35,14 @@
       {
         "name": "soc_pokec_relationships",
         "value": "data/soc-pokec-relationships.csrbin"
+      },
+      {
+        "name": "friendster",
+        "value": "data/com-friendster.ungraph.csrbin"
+      },
+      {
+        "name": "orkut",
+        "value": "data/com-orkut.ungraph.csrbin"
       },
       {
         "name": "web_berkstan",
