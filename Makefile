@@ -1,6 +1,7 @@
 BUILD_DIR := build
 DATA_DIR := data
 CONVERTER := $(BUILD_DIR)/graph_convert
+PROFILE_BUILD_DIR := build-profile
 GRAPH_NAMES := \
 	web-Google \
 	roadNet-CA \
@@ -17,11 +18,15 @@ GRAPH_NAMES := \
 
 CSR_BINARIES := $(GRAPH_NAMES:%=$(DATA_DIR)/%.csrbin)
 
-.PHONY: all clean inputs inputs-large
+.PHONY: all clean inputs inputs-large profile
 
 all:
 	cmake --preset default
 	cmake --build --preset default -j$$(nproc)
+
+profile:
+	cmake --preset default -B $(PROFILE_BUILD_DIR) -DCMAKE_CUDA_FLAGS=-lineinfo
+	cmake --build $(PROFILE_BUILD_DIR) -j$$(nproc)
 
 inputs: $(CSR_BINARIES)
 

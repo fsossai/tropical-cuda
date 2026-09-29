@@ -4,6 +4,7 @@
 .yuclid
 *.jsonl
 *.out
+build-profile/
 build/
 compile_commands.json
 data/*.csrbin
