@@ -40,6 +40,12 @@ a \otimes b = a + b.
 $$
 
 Let $d_i$ be the best distance known so far for vertex $i$, and $w_{ij}$ be the cost of going from $j$ to $i$.
+As the figure below shows, relaxing $i$ asks whether going to $j$ first and then taking the edge to $i$ is shorter than the current $d_i$.
+
+<p align="center">
+  <img src="assets/bellman-ford-relaxation.svg" alt="Bellman-Ford relaxation of vertex i through vertex j" width="480">
+</p>
+
 One [Bellman-Ford](https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm) relaxation is therefore a tropical matrix-vector product:
 
 $$

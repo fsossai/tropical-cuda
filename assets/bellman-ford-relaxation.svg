@@ -1,0 +1,301 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1200"
+  height="790"
+  viewBox="0 30 1200 790"
+>
+  <defs>
+    <!-- Arrowheads -->
+    <marker id="arrow-gray" markerWidth="10" markerHeight="10"
+            refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#a6a6a6"/>
+    </marker>
+
+    <marker id="arrow-blue" markerWidth="10" markerHeight="10"
+            refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#1476d4"/>
+    </marker>
+
+    <marker id="arrow-red" markerWidth="10" markerHeight="10"
+            refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#ef2024"/>
+    </marker>
+
+    <style>
+      .math {
+        font-family: Georgia, "Times New Roman", serif;
+        font-style: italic;
+      }
+
+      .label {
+        font-family: Georgia, "Times New Roman", serif;
+      }
+
+      .gray-edge {
+        fill: none;
+        stroke: #b0b0b0;
+        stroke-width: 4;
+        marker-end: url(#arrow-gray);
+      }
+
+      .gray-node {
+        fill: #eeeeee;
+        stroke: #666666;
+        stroke-width: 4;
+      }
+
+      .blue-edge {
+        fill: none;
+        stroke: #1476d4;
+        stroke-width: 8;
+        marker-end: url(#arrow-blue);
+      }
+
+      .red-edge {
+        fill: none;
+        stroke: #ef2024;
+        stroke-width: 8;
+        marker-end: url(#arrow-red);
+      }
+
+      .node-text {
+        font-family: Georgia, "Times New Roman", serif;
+        font-style: italic;
+        font-size: 46px;
+        text-anchor: middle;
+        dominant-baseline: central;
+      }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="900" fill="white"/>
+
+  <!-- =========================================================
+       QUESTION BOX
+       ========================================================= -->
+  <rect
+    x="320" y="55"
+    width="560" height="145"
+    rx="20"
+    fill="#fff1b8"
+    stroke="#111"
+    stroke-width="4"
+  />
+
+  <text
+    x="600" y="115"
+    text-anchor="middle"
+    class="label"
+    font-size="39"
+    fill="#111"
+  >
+    Is
+    <tspan class="math"> d</tspan>
+    <tspan font-size="25" baseline-shift="sub">j</tspan>
+    <tspan> + </tspan>
+    <tspan class="math">w</tspan>
+    <tspan font-size="25" baseline-shift="sub">ij</tspan>
+    <tspan> smaller</tspan>
+  </text>
+
+  <text
+    x="600" y="165"
+    text-anchor="middle"
+    class="label"
+    font-size="39"
+    fill="#111"
+  >
+    than the current
+    <tspan class="math"> d</tspan>
+    <tspan font-size="25" baseline-shift="sub">i</tspan>
+    <tspan>?</tspan>
+  </text>
+
+  <!-- =========================================================
+       GRAY BACKGROUND GRAPH
+       ========================================================= -->
+
+  <!-- s -> a -->
+  <path d="M105 475 L250 295" class="gray-edge"/>
+
+  <!-- a -> blue intermediate -->
+  <path d="M280 315 L280 405" class="gray-edge"/>
+
+  <!-- a -> b -->
+  <path d="M315 270 L790 285" class="gray-edge"/>
+
+  <!-- b -> j -->
+  <path d="M815 320 L690 430" class="gray-edge"/>
+
+  <!-- b -> i -->
+  <path d="M845 320 L1010 455" class="gray-edge"/>
+
+  <!-- s -> c -->
+  <path d="M95 530 L245 710" class="gray-edge"/>
+
+  <!-- c -> gray middle -->
+  <path d="M280 705 L320 575" class="gray-edge"/>
+
+  <!-- c -> d -->
+  <path d="M305 745 L680 755" class="gray-edge"/>
+
+  <!-- d -> e -->
+  <path d="M730 750 L970 690" class="gray-edge"/>
+
+  <!-- d -> i -->
+  <path d="M735 730 L1005 505" class="gray-edge"/>
+
+  <!-- e -> i -->
+  <path d="M1025 670 L1035 530" class="gray-edge"/>
+
+  <!-- =========================================================
+       CURRENT d_i PATH
+       ========================================================= -->
+  <path
+    d="M105 515
+       C230 585, 350 610, 470 620
+       C680 640, 840 610, 1005 510"
+    fill="none"
+    stroke="#858585"
+    stroke-width="7"
+    stroke-dasharray="14 10"
+    marker-end="url(#arrow-gray)"
+  />
+
+  <text
+    x="575"
+    y="610"
+    class="label"
+    font-size="35"
+    fill="#555"
+  >
+    current
+    <tspan class="math"> d</tspan>
+    <tspan font-size="23" baseline-shift="sub">i</tspan>
+  </text>
+
+  <!-- =========================================================
+       HIGHLIGHTED BLUE PATH s -> ... -> j
+       ========================================================= -->
+
+  <path d="M115 485 L245 445" class="blue-edge"/>
+  <path d="M315 440 L420 440" class="blue-edge"/>
+  <path d="M490 440 C550 440, 585 440, 620 455" class="blue-edge"/>
+
+  <text
+    x="455"
+    y="385"
+    text-anchor="middle"
+    class="label"
+    font-size="34"
+    font-weight="600"
+    fill="#115cb5"
+  >
+    go to
+    <tspan class="math"> j</tspan>
+    <tspan> first, then </tspan>
+    <tspan class="math">i</tspan>
+  </text>
+
+  <!-- =========================================================
+       RED EDGE j -> i
+       ========================================================= -->
+
+  <path
+    d="M720 465 C825 465, 915 465, 1000 480"
+    class="red-edge"
+  />
+
+  <text
+    x="850"
+    y="440"
+    class="math"
+    font-size="42"
+    fill="#d81920"
+  >
+    w<tspan font-size="27" baseline-shift="sub">ij</tspan>
+  </text>
+
+  <!-- =========================================================
+       NODES
+       ========================================================= -->
+
+  <!-- s -->
+  <circle cx="80" cy="500" r="48"
+          fill="#88d5fa"
+          stroke="#09277d"
+          stroke-width="5"/>
+  <text x="80" y="500" class="node-text">s</text>
+
+  <!-- first blue intermediate -->
+  <circle cx="280" cy="440" r="37"
+          fill="#b9e0fb"
+          stroke="#115cb5"
+          stroke-width="4"/>
+
+  <!-- second blue intermediate -->
+  <circle cx="455" cy="440" r="37"
+          fill="#b9e0fb"
+          stroke="#115cb5"
+          stroke-width="4"/>
+
+  <!-- j -->
+  <circle cx="670" cy="465" r="49"
+          fill="#ffc447"
+          stroke="#8f4200"
+          stroke-width="5"/>
+  <text x="670" y="465" class="node-text">j</text>
+
+  <!-- i -->
+  <circle cx="1045" cy="490" r="50"
+          fill="#ff9b9f"
+          stroke="#bd1016"
+          stroke-width="5"/>
+  <text x="1045" y="490" class="node-text">i</text>
+
+  <!-- Gray nodes -->
+  <circle cx="280" cy="275" r="43" class="gray-node"/>
+  <text x="280" y="275" class="node-text" fill="#444">a</text>
+
+  <circle cx="825" cy="290" r="43" class="gray-node"/>
+  <text x="825" y="290" class="node-text" fill="#444">b</text>
+
+  <circle cx="270" cy="745" r="43" class="gray-node"/>
+  <text x="270" y="745" class="node-text" fill="#444">c</text>
+
+  <circle cx="710" cy="755" r="43" class="gray-node"/>
+  <text x="710" y="755" class="node-text" fill="#444">d</text>
+
+  <circle cx="1015" cy="705" r="43" class="gray-node"/>
+  <text x="1015" y="705" class="node-text" fill="#444">e</text>
+
+  <circle cx="330" cy="570" r="34" class="gray-node"/>
+
+  <!-- =========================================================
+       UPDATE d_i LABEL + EMPHASIS MARKS
+       ========================================================= -->
+
+  <text
+    x="1020"
+    y="390"
+    class="label"
+    font-size="35"
+    font-weight="600"
+    fill="#d81920"
+  >
+    update
+    <tspan class="math"> d</tspan>
+    <tspan font-size="23" baseline-shift="sub">i</tspan>
+  </text>
+
+  <!-- emphasis rays around i -->
+  <line x1="1025" y1="425" x2="1015" y2="395"
+        stroke="#ef2024" stroke-width="6"/>
+  <line x1="1070" y1="425" x2="1080" y2="397"
+        stroke="#ef2024" stroke-width="6"/>
+  <line x1="1090" y1="445" x2="1115" y2="428"
+        stroke="#ef2024" stroke-width="6"/>
+  <line x1="1097" y1="485" x2="1128" y2="490"
+        stroke="#ef2024" stroke-width="6"/>
+</svg>
