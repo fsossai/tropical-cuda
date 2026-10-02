@@ -1,20 +1,24 @@
 # Tropical Shortest Paths with CUDA
 
-Did you know that you can solve the single-source shortest path (SSSP) problem via matrix-vector multiplication?
+
+"Did you know that you can solve the single-source shortest path (SSSP) problem via matrix-vector multiplication?"
 
 This project implements an algorithm that I will refer to as "tropical" and compare it to cuGraph's implementation.
 The tropical algorithm requires a variation of SpMV that cuSPARSE's standard SpMV does not provide (see below).
 
 Here, I want to answer a few practical questions:
 
-- **Q1**: How does a tropical SSSP solver compare with the cuGraph implementation?
+- **Q1**: How does a tropical SSSP solver compare with the cuGraph's SSSP solver?
 - **Q2**: Can optimized sparse-matrix libraries such as cuSPARSE solve SSSP without a custom tropical matrix multiply?
 
 I evaluate these questions on graphs from the [SNAP dataset collection](https://snap.stanford.edu/data/).
 
-## Tropical SpMV
+## Tropical SSSP
 
-### The Exact Formulation
+With the advent of Tensor Cores and other dedicated hardware for linear algebra, more and more algorithms have been reformulated in terms of matrix multiplication.
+The following is a well-known formulation based on [tropical algebra](https://en.wikipedia.org/wiki/Tropical_semiring) of the [Bellman-Ford algorithm](https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm).
+
+### The Exact Formulation (`tropical_exact`)
 
 A matrix-vector product computes each output element by combining a matrix row with an input vector. In ordinary arithmetic and in a generic algebraic form, respectively, it is:
 
@@ -39,7 +43,7 @@ Let $d_i$ be the best distance known so far for vertex $i$, and $w_{ij}$ be the 
 One [Bellman-Ford](https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm) relaxation is therefore a tropical matrix-vector product:
 
 $$
-d_i \leftarrow \bigoplus_j \left(w_{ij} \otimes d_j\right) = \min_j\left(w_{ij} + d_j\right).
+d_i \leftarrow \min_j\left(w_{ij} + d_j\right) = \bigoplus_j \left(w_{ij} \otimes d_j\right).
 $$
 
 Here a missing edge has cost $\infty$ and $w_{ii} = 0$ for every vertex $i$.
@@ -85,6 +89,7 @@ Download the SNAP inputs and convert them to memory-mappable CSR binaries:
 
 ```sh
 make inputs
+make inputs-large    # if you feel courageous
 ```
 
 Run the hand-written tropical solver:
@@ -99,7 +104,7 @@ Run cuGraph on the same input:
 ./build/sssp data/web-Google.csrbin --solver cugraph --runs 1
 ```
 
-## Metrics
+## Evaluation
 
 Each run prints the time in seconds of the following steps:
 
@@ -109,6 +114,10 @@ Each run prints the time in seconds of the following steps:
 - `end_to_end`: the whole solver call, which is roughly `setup`, plus every `kernel`, plus `download`.
 
 None of them include loading the graph from disk, creating the CUDA context, or transposing the graph.
+
+For each graph, we use the source that led to the longest running time.
+
+All measurements were taken on an NVIDIA A30X (24 GB) with an Intel Xeon Gold 6238L host, using CUDA 13.0, Clang 22, and cuGraph 25.10 in a Release build.
 
 ## cuGraph dependency
 
