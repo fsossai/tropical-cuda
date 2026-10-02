@@ -10,31 +10,31 @@
     "graph": [
       {
         "name": "amazon0601",
-        "value": "data/amazon0601.csrbin"
+        "value": "data/amazon0601.csrbin --source 402568"
       },
       {
         "name": "email_euall",
-        "value": "data/email-EuAll.csrbin"
+        "value": "data/email-EuAll.csrbin --source 70445"
       },
       {
         "name": "roadnet_ca",
-        "value": "data/roadNet-CA.csrbin"
+        "value": "data/roadNet-CA.csrbin --source 1253170"
       },
       {
         "name": "roadnet_pa",
-        "value": "data/roadNet-PA.csrbin"
+        "value": "data/roadNet-PA.csrbin --source 93526"
       },
       {
         "name": "roadnet_tx",
-        "value": "data/roadNet-TX.csrbin"
+        "value": "data/roadNet-TX.csrbin --source 198933"
       },
       {
         "name": "livejournal",
-        "value": "data/soc-LiveJournal1.csrbin"
+        "value": "data/soc-LiveJournal1.csrbin --source 4774828"
       },
       {
         "name": "soc_pokec_relationships",
-        "value": "data/soc-pokec-relationships.csrbin"
+        "value": "data/soc-pokec-relationships.csrbin --source 1193707"
       },
       {
         "name": "friendster",
@@ -46,23 +46,23 @@
       },
       {
         "name": "web_berkstan",
-        "value": "data/web-BerkStan.csrbin"
+        "value": "data/web-BerkStan.csrbin --source 267459"
       },
       {
         "name": "web_google",
-        "value": "data/web-Google.csrbin"
+        "value": "data/web-Google.csrbin --source 649930"
       },
       {
         "name": "web_notredame",
-        "value": "data/web-NotreDame.csrbin"
+        "value": "data/web-NotreDame.csrbin --source 133729"
       },
       {
         "name": "web_stanford",
-        "value": "data/web-Stanford.csrbin"
+        "value": "data/web-Stanford.csrbin --source 133729"
       },
       {
         "name": "wiki_talk",
-        "value": "data/wiki-Talk.csrbin"
+        "value": "data/wiki-Talk.csrbin --source 3215"
       }
     ],
     "solver": [
