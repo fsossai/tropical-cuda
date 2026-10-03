@@ -18,7 +18,7 @@ I evaluate these questions on graphs from the [SNAP dataset collection](https://
 With the advent of Tensor Cores and other dedicated hardware for linear algebra, more and more algorithms have been reformulated in terms of matrix multiplication.
 The following is a well-known formulation based on [tropical algebra](https://en.wikipedia.org/wiki/Tropical_semiring) of the [Bellman-Ford algorithm](https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm).
 
-### The Exact Formulation (`tropical_exact`)
+### The Exact Formulation (`tropical_exact`, `cusparse`)
 
 A matrix-vector product computes each output element by combining a matrix row with an input vector. In ordinary arithmetic and in a generic algebraic form, respectively, it is:
 
@@ -55,7 +55,7 @@ $$
 Here a missing edge has cost $\infty$ and $w_{ii} = 0$ for every vertex $i$.
 Repeating the product propagates distances through the graph. The idea is inspired by Michael Garland's paper, *Sparse matrix computations on manycore GPUs*.
 
-### An Approximate Formulation
+### An Approximate Formulation (`tropical_apx`)
 
 Because a graph's adjacency matrix is sparse, this operation is an SpMV, but cuSPARSE's standard SpMV supports only ordinary arithmetic rather than the min-plus variant.
 Its preview `cusparseSpMMOp` API accepts custom operators, which the `cusparse` backend uses to compute the exact min-plus product.
@@ -82,6 +82,13 @@ $$
 
 As a result, the expression is a soft-min, and it approaches the true minimum as $\beta$ grows.
 Unfortunately, finite-precision arithmetic makes this transformation numerically fragile, as explained in [Floating-Point Considerations](docs/floating_point.md).
+
+## Solvers
+
+- `cugraph`: the SSSP implementation of RAPIDS cuGraph, used as the baseline.
+- `tropical_exact`: a hand-written CUDA kernel that computes the min-plus SpMV.
+- `cusparse`: the same exact product, computed by cuSPARSE's `cusparseSpMMOp` with min-plus operators compiled at run time.
+- `tropical_apx`: approximates the min-plus product with cuSPARSE's ordinary SpMV in the exponential domain.
 
 ## Quick start
 
@@ -125,7 +132,16 @@ For each graph, we use the source that led to the longest running time.
 
 All measurements were taken on an NVIDIA A30X (24 GB) with an Intel Xeon Gold 6238L host, using CUDA 13.0, Clang 22, and cuGraph 25.10 in a Release build.
 
-## cuGraph dependency
+The plot below shows each solver's `kernel` speedup over cuGraph, using the median of 10 runs.
+
+<p align="center">
+  <img src="evaluation/speedup.svg" alt="Kernel speedup of each solver over cuGraph per graph" width="700">
+</p>
+
+- **Answer to Q1**: `tropical_exact` is faster than cuGraph on 9 of the 13 graphs, by up to 2.8x and 1.4x on geometric mean. It is slower on the road networks and web-BerkStan, whose long shortest paths take hundreds of iterations that each recompute every vertex, while cuGraph only updates the vertices that changed. `cusparse` computes the same exact product but is not efficient: it is 2.5x slower than cuGraph on geometric mean, for reasons still under investigation.
+- **Answer to Q2**: Work in progress!
+
+## Dependencies
 
 The `cugraph` backend requires a separate [RAPIDS libcugraph installation](https://docs.rapids.ai/api/cugraph/legacy/installation/getting_cugraph/). CMake enables it when it finds `cugraph::cugraph_c`.
 
