@@ -10,59 +10,94 @@
     "graph": [
       {
         "name": "amazon0601",
-        "value": "data/amazon0601.csrbin --source 402568"
+        "value": "data/amazon0601.csrbin",
+        "attrs": {
+          "source": 402568
+        }
       },
       {
         "name": "email_euall",
-        "value": "data/email-EuAll.csrbin --source 70445"
+        "value": "data/email-EuAll.csrbin",
+        "attrs": {
+          "source": 70445
+        }
       },
       {
         "name": "roadnet_ca",
-        "value": "data/roadNet-CA.csrbin --source 1253170"
+        "value": "data/roadNet-CA.csrbin",
+        "attrs": {
+          "source": 1253170
+        }
       },
       {
         "name": "roadnet_pa",
-        "value": "data/roadNet-PA.csrbin --source 93526"
+        "value": "data/roadNet-PA.csrbin",
+        "attrs": {
+          "source": 93526
+        }
       },
       {
         "name": "roadnet_tx",
-        "value": "data/roadNet-TX.csrbin --source 198933"
+        "value": "data/roadNet-TX.csrbin",
+        "attrs": {
+          "source": 198933
+        }
       },
       {
         "name": "livejournal",
-        "value": "data/soc-LiveJournal1.csrbin --source 4774828"
+        "value": "data/soc-LiveJournal1.csrbin",
+        "attrs": {
+          "source": 4774828
+        }
       },
       {
         "name": "soc_pokec_relationships",
-        "value": "data/soc-pokec-relationships.csrbin --source 1193707"
-      },
-      {
-        "name": "friendster",
-        "value": "data/com-friendster.ungraph.csrbin"
+        "value": "data/soc-pokec-relationships.csrbin",
+        "attrs": {
+          "source": 1193707
+        }
       },
       {
         "name": "orkut",
-        "value": "data/com-orkut.ungraph.csrbin"
+        "value": "data/com-orkut.ungraph.csrbin",
+        "attrs": {
+          "source": 1
+        }
       },
       {
         "name": "web_berkstan",
-        "value": "data/web-BerkStan.csrbin --source 267459"
+        "value": "data/web-BerkStan.csrbin",
+        "attrs": {
+          "source": 267459
+        }
       },
       {
         "name": "web_google",
-        "value": "data/web-Google.csrbin --source 649930"
+        "value": "data/web-Google.csrbin",
+        "attrs": {
+          "source": 649930
+        }
       },
       {
         "name": "web_notredame",
-        "value": "data/web-NotreDame.csrbin --source 133729"
+        "value": "data/web-NotreDame.csrbin",
+        "attrs": {
+          "source": 133729
+        }
       },
       {
         "name": "web_stanford",
-        "value": "data/web-Stanford.csrbin --source 133729"
+        "value": "data/web-Stanford.csrbin",
+        "attrs": {
+          "source": 133729
+        }
       },
       {
         "name": "wiki_talk",
-        "value": "data/wiki-Talk.csrbin --source 3215"
+        "value": "data/wiki-Talk.csrbin",
+        "attrs": {
+          "source": 3215
+        }
       }
     ],
     "solver": [
@@ -74,7 +109,7 @@
   },
   "trials": [
     {
-      "command": "${yuclid.workspace}/build/sssp ${yuclid.graph} --solver ${yuclid.solver} --runs ${yuclid.repeat}",
+      "command": "${yuclid.workspace}/build/sssp ${yuclid.graph} --source ${yuclid.graph.source} --solver ${yuclid.solver} --runs ${yuclid.repeat}",
       "repeats": true
     }
   ],

@@ -30,7 +30,7 @@ profile:
 
 inputs: $(CSR_BINARIES)
 
-inputs-large: $(DATA_DIR)/com-friendster.ungraph.csrbin $(DATA_DIR)/com-orkut.ungraph.csrbin
+inputs-large: $(DATA_DIR)/com-orkut.ungraph.csrbin
 
 $(CONVERTER):
 	cmake --preset default
