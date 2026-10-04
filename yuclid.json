@@ -12,7 +12,7 @@
         "name": "amazon0601",
         "value": "data/amazon0601.csrbin",
         "attrs": {
-          "source": 402568
+          "source": 347834
         }
       },
       {
@@ -68,28 +68,28 @@
         "name": "web_berkstan",
         "value": "data/web-BerkStan.csrbin",
         "attrs": {
-          "source": 267459
+          "source": 141889
         }
       },
       {
         "name": "web_google",
         "value": "data/web-Google.csrbin",
         "attrs": {
-          "source": 649930
+          "source": 160322
         }
       },
       {
         "name": "web_notredame",
         "value": "data/web-NotreDame.csrbin",
         "attrs": {
-          "source": 133729
+          "source": 253644
         }
       },
       {
         "name": "web_stanford",
         "value": "data/web-Stanford.csrbin",
         "attrs": {
-          "source": 133729
+          "source": 118959
         }
       },
       {
