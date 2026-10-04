@@ -3,7 +3,7 @@
 Did you know that you can solve the single-source shortest path (SSSP) problem via [a matrix-vector multiplication](https://en.wikipedia.org/wiki/Min-plus_matrix_multiplication)?
 
 This project implements an algorithm that I will refer to as "tropical" and compare it to cuGraph's implementation.
-The tropical algorithm requires a variation of SpMV that cuSPARSE's standard SpMV does not provide (see below).
+The tropical algorithm requires a variation of SpMV that cuSPARSE's standard SpMV does not provide.
 
 Here, I want to answer a few practical questions:
 
@@ -11,7 +11,7 @@ Here, I want to answer a few practical questions:
 - **Q2**: Can a tropical SSSP solver be implemented with cuSPARSE's custom-operator SpMM (`cusparseSpMMOp`)?
 - **Q3**: Can a tropical SSSP solver be implemented by reusing libraries like cuSPARSE, without a custom matrix multiply?
 
-I evaluate these questions on graphs from the [SNAP dataset collection](https://snap.stanford.edu/data/).
+I evaluate these questions on graphs from the [SNAP dataset collection](https://snap.stanford.edu/data/); results are at the bottom of the page.
 
 ## Tropical SSSP
 
@@ -135,7 +135,8 @@ All measurements were taken on an NVIDIA A30X (24 GB) with an Intel Xeon Gold 62
 
 ### Answer to Q1
 
-`minplus_spmv` is faster than cuGraph on 9 of the 13 graphs, by up to 2.8x and 1.4x on geometric mean. It is slower on the road networks and web-BerkStan, whose long shortest paths take hundreds of iterations that each recompute every vertex, while cuGraph only updates the vertices that changed.
+`minplus_spmv` is faster than cuGraph on 9 of the 13 graphs with 1.5x geomean and up to 3.0x.
+It is slower on the road networks and web-BerkStan, whose long shortest paths take hundreds of iterations that each recompute every vertex, while cuGraph only updates the vertices that changed.
 
 <p align="center">
   <img src="evaluation/speedup_r1.svg" alt="Kernel speedup of minplus_spmv over cuGraph per graph" width="700">
@@ -143,7 +144,7 @@ All measurements were taken on an NVIDIA A30X (24 GB) with an Intel Xeon Gold 62
 
 ### Answer to Q2
 
-Yes, but not efficiently. `minplus_spmmop` computes the same exact product but is 2.2x slower than cuGraph on geometric mean, for reasons still under investigation.
+Yes, but not efficiently. `minplus_spmmop` computes the same exact product but is 2.2x slower than cuGraph on average, for reasons I haven't studied yet.
 
 <p align="center">
   <img src="evaluation/speedup_r2.svg" alt="Kernel speedup of minplus_spmmop over cuGraph per graph" width="700">
@@ -151,7 +152,10 @@ Yes, but not efficiently. `minplus_spmmop` computes the same exact product but i
 
 ### Answer to Q3
 
-Yes, approximately. `smoothmin_spmv` relies only on cuSPARSE's standard SpMV and is faster than cuGraph on all 13 graphs, by 3.8x on geometric mean. With the default $\beta = 32$, it returns the exact distance for every vertex on 9 graphs and for 99.96% of the vertices on web-BerkStan. On the road networks, whose shortest paths span hundreds of hops, 61% to 98% of the distances are exact, and the rest are at most 0.2% too short at the 99th percentile. See [Accuracy of `smoothmin_spmv`](docs/smoothmin_spmv_accuracy.md) for details.
+Yes, approximately. `smoothmin_spmv` relies only on cuSPARSE's standard SpMV and is faster than cuGraph on all 13 graphs with 3.8x geomean.
+With the default $\beta = 32$, it returns the exact distance for every vertex on 9 graphs and for 99.96% of the vertices on web-BerkStan.
+On the road networks, whose shortest paths span hundreds of hops, 61% to 98% of the distances are exact, and the rest are at most 0.2% too short at the 99th percentile.
+See [Accuracy of `smoothmin_spmv`](docs/smoothmin_spmv_accuracy.md) for details.
 
 <p align="center">
   <img src="evaluation/speedup_r3.svg" alt="Kernel speedup of smoothmin_spmv over cuGraph per graph" width="700">
