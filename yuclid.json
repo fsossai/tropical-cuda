@@ -120,7 +120,8 @@
         "spurious",
         "overestimates",
         "rel_error_mean",
-        "rel_error_p99"
+        "rel_error_p99",
+        "exact"
       ]
     },
     {
@@ -140,7 +141,8 @@
     "spurious": "grep -E '^spurious:' ${yuclid.@}.out | awk '{print $2}'",
     "overestimates": "grep -E '^overestimates:' ${yuclid.@}.out | awk '{print $2}'",
     "rel_error_mean": "grep -E '^rel_error_mean:' ${yuclid.@}.out | awk '{print $2}'",
-    "rel_error_p99": "grep -E '^rel_error_p99:' ${yuclid.@}.out | awk '{print $2}'"
+    "rel_error_p99": "grep -E '^rel_error_p99:' ${yuclid.@}.out | awk '{print $2}'",
+    "exact": "grep -E '^exact:' ${yuclid.@}.out | awk '{print $2}'"
   },
   "order": [
     "graph",

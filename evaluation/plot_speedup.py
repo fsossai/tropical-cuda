@@ -8,7 +8,7 @@ turned into a ratio against the cugraph median for the same graph:
 
 so taller is faster and the cugraph series sits flat at 1.00 by construction.
 
-    ./plot_speedup.py 20261002-233322.yuclid.jsonl -o speedup.svg
+    ./plot_speedup.py time.yuclid.jsonl -o speedup.svg
 """
 
 import argparse
@@ -28,6 +28,9 @@ X_DIM, Z_DIM, METRIC = "graph", "solver", "kernel"
 
 # Bar order, left to right within each graph; the baseline goes last.
 SOLVER_ORDER = ["tropical_exact", "cusparse", "cugraph"]
+
+# Solvers left out of the plot; tropical_apx is approximate, so its speed is not comparable.
+EXCLUDED = {"tropical_apx"}
 
 # Categorical slots 1 and 2 of the validated palette for the compared solvers;
 # the baseline is deliberately neutral, since it is the reference, not a result.
@@ -69,6 +72,8 @@ def medians(records):
     """Median metric value per (x, z) cell."""
     samples = defaultdict(list)
     for record in records:
+        if record.get(Z_DIM) in EXCLUDED:
+            continue
         try:
             samples[record[X_DIM], record[Z_DIM]].append(float(record[METRIC]))
         except KeyError as exc:
@@ -121,7 +126,7 @@ def plot(xs, series, out, digits):
             color=COLORS.get(z, INK_MUTED),
             label=z, zorder=3,
         )
-        for bar, value in zip(bars, values):
+        for position, bar, value in zip(positions, bars, values):
             if math.isnan(value):
                 continue
             ax.annotate(
@@ -130,6 +135,7 @@ def plot(xs, series, out, digits):
                 textcoords="offset points", xytext=(0, 3),
                 ha="center", va="bottom",
                 fontsize=ANNOTATION_SIZE, color=INK_SOFT, rotation=90, zorder=4,
+                fontweight="bold" if xs[position] == GEOMEAN_LABEL else "normal",
             )
 
     # Parity with the baseline, and the divider in front of the summary group.
@@ -142,6 +148,9 @@ def plot(xs, series, out, digits):
     ax.set_xlim(-0.6, len(xs) - 0.4)
     ax.set_xticks(list(positions))
     ax.set_xticklabels(xs, rotation=30, ha="right")
+    for label in ax.get_xticklabels():
+        if label.get_text() == GEOMEAN_LABEL:
+            label.set_fontweight("bold")
     ax.set_ylabel(f"Speedup over {BASELINE}", color=INK, fontsize=LABEL_SIZE)
     # Title inside the axes, in the headroom left above the tallest bar.
     ax.text(

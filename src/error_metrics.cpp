@@ -83,6 +83,7 @@ void print_error_metrics(const std::vector<float>& reference, const std::vector<
   size_t lost = 0;
   size_t spurious = 0;
   size_t overestimates = 0;
+  size_t exact_count = 0;
   std::vector<double> relative_errors;
   relative_errors.reserve(reference.size());
 
@@ -104,8 +105,13 @@ void print_error_metrics(const std::vector<float>& reference, const std::vector<
     const double relative = (exact - distances[vertex]) / exact;
     relative_errors.push_back(relative);
     overestimates += relative < -1e-6 ? 1 : 0;
+    exact_count += distances[vertex] == reference[vertex] ? 1 : 0;
   }
 
+  const double exact_share =
+      relative_errors.empty()
+          ? 0.0
+          : 100.0 * static_cast<double>(exact_count) / static_cast<double>(relative_errors.size());
   const ErrorSummary summary = summarize(relative_errors);
   std::cout << "lost: " << lost << '\n'
             << "spurious: " << spurious << '\n'
@@ -113,5 +119,6 @@ void print_error_metrics(const std::vector<float>& reference, const std::vector<
             << std::fixed << std::setprecision(4) << "rel_error_mean: " << summary.mean * 100.0
             << " %\n"
             << "rel_error_p99: " << summary.p99 * 100.0 << " %\n"
+            << "exact: " << exact_share << " %\n"
             << std::defaultfloat;
 }

@@ -11,7 +11,7 @@ pip install yuclid
 yuclid run --repeat 10 --metric kernel
 
 # Accuracy of tropical_apx against a CPU Dijkstra reference.
-yuclid run --select solver=tropical_apx --metric rel_error_mean rel_error_p99
+yuclid run --select solver=tropical_apx --metric rel_error_mean rel_error_p99 exact
 ```
 
 Each sweep builds the project, prepares the inputs, and writes its results to `<run-id>.yuclid.jsonl` in the repository root.
