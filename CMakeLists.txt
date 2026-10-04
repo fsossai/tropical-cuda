@@ -17,7 +17,7 @@ add_executable(tropical_sssp
   src/graph_binary.cpp
   src/tropical_common.cu
   src/minplus_spmv.cu
-  src/softmin_spmv.cu
+  src/smoothmin_spmv.cu
   src/minplus_spmmop.cu
   src/error_metrics.cpp
 )

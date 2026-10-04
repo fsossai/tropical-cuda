@@ -9,7 +9,7 @@
   "space": {
     "solver": [
       "minplus_spmv",
-      "softmin_spmv",
+      "smoothmin_spmv",
       "minplus_spmmop",
       "cugraph"
     ],

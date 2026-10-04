@@ -12,7 +12,7 @@ The sources were therefore chosen to make the solve as long as possible, using t
 ## Method
 
 1. **Find the largest component.** For a directed graph, this is the largest strongly connected component: every vertex in it reaches every other, so a source there reaches the bulk of the graph. For an undirected graph, it is the largest connected component.
-2. **Pick candidates from it:** ten vertices drawn uniformly at random, with a fixed seed.
+2. **Pick candidates from it:** 10 vertices drawn uniformly at random, with a fixed seed.
 3. **Run cuGraph from each candidate** with `sssp --solver cugraph --runs 11`, and take the median kernel time of runs 2 to 11, discarding the first run, which includes warm-up.
 4. **Keep the slowest candidate.** The timer has a resolution of 1 ms, so ties are broken by the larger depth, then the larger reach.
 

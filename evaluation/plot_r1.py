@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Plot per-graph solver speedup over cugraph from a yuclid JSON Lines result file.
+"""Plot the per-graph speedup of minplus_spmv over cugraph (answers Q1).
 
 Each (graph, solver) cell is reduced to the median of its repetitions, then
 turned into a ratio against the cugraph median for the same graph:
 
     speedup = median(kernel, cugraph) / median(kernel, solver)
 
-so taller is faster and the cugraph series sits flat at 1.00 by construction.
+so taller is faster and the cugraph bars sit at 1.00 by construction.
+plot_r2.py and plot_r3.py reuse this script for the other solvers.
 
-    ./plot_speedup.py time.yuclid.jsonl -o speedup.svg
+    ./plot_r1.py time.yuclid.jsonl -o speedup_r1.svg
 """
 
 import argparse
@@ -26,19 +27,12 @@ from matplotlib.ticker import FuncFormatter
 BASELINE = "cugraph"          # series everything is normalized against
 X_DIM, Z_DIM, METRIC = "graph", "solver", "kernel"
 
-# Bar order, left to right within each graph; the baseline goes last.
-SOLVER_ORDER = ["minplus_spmv", "minplus_spmmop", "cugraph"]
+SOLVER = "minplus_spmv"       # series compared against the baseline in this plot
 
-# Solvers left out of the plot; softmin_spmv is approximate, so its speed is not comparable.
-EXCLUDED = {"softmin_spmv"}
-
-# Categorical slots 1 and 2 of the validated palette for the compared solvers;
-# the baseline is deliberately neutral, since it is the reference, not a result.
-COLORS = {
-    "minplus_spmv": "#2a78d6",
-    "minplus_spmmop": "#eb6834",
-    "cugraph": "#b4b3ac",
-}
+# Categorical slots 1 to 3 of the validated palette, one per solver so each keeps its color
+# across plots; the baseline is deliberately neutral, since it is the reference, not a result.
+SOLVER_COLORS = {"minplus_spmv": "#2a78d6", "minplus_spmmop": "#eb6834", "smoothmin_spmv": "#1baf7a"}
+BASELINE_COLOR = "#b4b3ac"
 
 SURFACE = "#fcfcfb"
 INK, INK_SOFT, INK_MUTED = "#0b0b0b", "#52514e", "#8c8b85"
@@ -68,11 +62,11 @@ def load(path):
     return records
 
 
-def medians(records):
-    """Median metric value per (x, z) cell."""
+def medians(records, solver):
+    """Median metric value per (x, z) cell, for the solver and the baseline only."""
     samples = defaultdict(list)
     for record in records:
-        if record.get(Z_DIM) in EXCLUDED:
+        if record.get(Z_DIM) not in (solver, BASELINE):
             continue
         try:
             samples[record[X_DIM], record[Z_DIM]].append(float(record[METRIC]))
@@ -82,14 +76,14 @@ def medians(records):
     return {cell: statistics.median(values) for cell, values in samples.items()}
 
 
-def speedups(records):
+def speedups(records, solver):
     """(x values, {z: [speedup per x]}) with the geomean appended to each series."""
-    median = medians(records)
+    median = medians(records, solver)
     xs = sorted({x for x, _ in median})
-    zs = [z for z in SOLVER_ORDER if any(z == cell[1] for cell in median)]
-    zs += sorted({z for _, z in median} - set(zs))
-    if BASELINE not in zs:
-        sys.exit(f"baseline {BASELINE!r} not present in {Z_DIM!r}")
+    zs = [solver, BASELINE]
+    for z in zs:
+        if not any(z == cell[1] for cell in median):
+            sys.exit(f"{z!r} not present in {Z_DIM!r}")
 
     series = {}
     for z in zs:
@@ -106,10 +100,8 @@ def speedups(records):
 # --- plot -------------------------------------------------------------------
 
 
-def plot(xs, series, out, digits):
-    # The baseline is flat at 1.00 by construction; the parity line carries it
-    # instead of a row of identical bars.
-    series = {z: values for z, values in series.items() if z != BASELINE}
+def plot(xs, series, out, digits, parity_label=None):
+    """Draw grouped bars per x value; parity_label names the 1x line in the legend."""
     group_width, n = 0.8, len(series)
     width = group_width / n
     positions = range(len(xs))
@@ -123,7 +115,7 @@ def plot(xs, series, out, digits):
         bars = ax.bar(
             offsets, values,
             width=width * 0.88,            # leaves a surface gap between bars
-            color=COLORS.get(z, INK_MUTED),
+            color=BASELINE_COLOR if z == BASELINE else SOLVER_COLORS.get(z, INK_MUTED),
             label=z, zorder=3,
         )
         for position, bar, value in zip(positions, bars, values):
@@ -140,7 +132,7 @@ def plot(xs, series, out, digits):
 
     # Parity with the baseline, and the divider in front of the summary group.
     ax.axhline(1.0, color=INK_MUTED, linewidth=1.0, linestyle=(0, (4, 3)), zorder=2,
-               label=BASELINE)
+               label=parity_label)
     ax.axvline(len(xs) - 1.5, color=INK_MUTED, linewidth=0.8, alpha=0.6, zorder=2)
 
     top = max(v for values in series.values() for v in values if not math.isnan(v))
@@ -169,8 +161,8 @@ def plot(xs, series, out, digits):
     ax.tick_params(colors=INK_SOFT, labelsize=TICK_SIZE)
 
     ax.legend(
-        frameon=False, ncol=len(series) + 1, loc="upper left",
-        bbox_to_anchor=(0, -0.34), fontsize=LEGEND_SIZE, labelcolor=INK_SOFT,
+        frameon=False, ncol=len(series) + (parity_label is not None), loc="upper left",
+        bbox_to_anchor=(0, -0.5), fontsize=LEGEND_SIZE, labelcolor=INK_SOFT,
     )
 
     fig.tight_layout()
@@ -178,18 +170,19 @@ def plot(xs, series, out, digits):
     print(f"wrote {out}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__,
+def main(solver=SOLVER, output="speedup_r1.svg", description=__doc__):
+    """Parse the command line and plot the speedup of one solver over the baseline."""
+    parser = argparse.ArgumentParser(description=description,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("file", help="yuclid JSON Lines result file")
-    parser.add_argument("-o", "--output", default="speedup.svg",
+    parser.add_argument("-o", "--output", default=output,
                         help="output path; extension picks the format (default: %(default)s)")
     parser.add_argument("-d", "--digits", type=int, default=2,
                         help="digits in the bar annotations (default: %(default)s)")
     parser.add_argument("--show", action="store_true", help="also open a window")
     args = parser.parse_args()
 
-    xs, series = speedups(load(args.file))
+    xs, series = speedups(load(args.file), solver)
     plot(xs, series, args.output, args.digits)
     if args.show:
         plt.show()

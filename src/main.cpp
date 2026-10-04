@@ -4,7 +4,7 @@
 #include "graph_binary.hpp"
 #include "minplus_spmmop.cuh"
 #include "minplus_spmv.cuh"
-#include "softmin_spmv.cuh"
+#include "smoothmin_spmv.cuh"
 #include "tropical_common.cuh"
 
 #include <timers/ScopedTimer.hpp>
@@ -45,12 +45,12 @@ void print_usage(const char* program) {
             << "\n"
             << "Options:\n"
             << "  --source NODE          Source vertex; defaults to the first edge source\n"
-            << "  --solver NAME          minplus_spmv (default), minplus_spmmop, softmin_spmv,\n"
+            << "  --solver NAME          minplus_spmv (default), minplus_spmmop, smoothmin_spmv,\n"
             << "                         cugraph\n"
             << "  --weights MODE         unit (default) or weighted\n"
             << "  --runs N               Number of SSSP runs (default: 1)\n"
             << "  --max-iterations N     Maximum Bellman-Ford iterations\n"
-            << "  --beta VALUE           Positive softmin_spmv approximation parameter\n"
+            << "  --beta VALUE           Positive smoothmin_spmv approximation parameter\n"
             << "  --output PATH          Write distances to PATH\n"
             << "  --error                Compare distances with a CPU Dijkstra reference\n"
             << "  --help                 Show this message\n";
@@ -106,7 +106,7 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--solver") {
       options.solver = require_value();
       if (options.solver != "cugraph" && options.solver != "minplus_spmv" &&
-          options.solver != "softmin_spmv" && options.solver != "minplus_spmmop") {
+          options.solver != "smoothmin_spmv" && options.solver != "minplus_spmmop") {
         throw std::runtime_error("unknown solver: " + options.solver);
       }
     } else if (argument == "--weights") {
@@ -192,8 +192,8 @@ int main(int argc, char** argv) {
     if (options.solver == "cugraph" && options.max_iterations) {
       throw std::runtime_error("--max-iterations is unsupported by cugraph");
     }
-    if (options.solver != "softmin_spmv" && options.beta) {
-      throw std::runtime_error("--beta is only supported by softmin_spmv");
+    if (options.solver != "smoothmin_spmv" && options.beta) {
+      throw std::runtime_error("--beta is only supported by smoothmin_spmv");
     }
 
     // Create the CUDA context up front so that no solver's timings include its one-time cost.
@@ -252,7 +252,7 @@ int main(int argc, char** argv) {
       TIMER_STOP();
     }
 
-    if (options.solver == "minplus_spmv" || options.solver == "softmin_spmv" ||
+    if (options.solver == "minplus_spmv" || options.solver == "smoothmin_spmv" ||
         options.solver == "minplus_spmmop") {
       Stopwatch sw_transpose("transpose", /*stats=*/false);
       ScopedTimer st_transpose(sw_transpose);
@@ -272,7 +272,7 @@ int main(int argc, char** argv) {
         distances =
             run_minplus_spmmop_sssp(graph, source, options.repetitions, options.max_iterations);
       } else {
-        distances = run_softmin_spmv_sssp(graph, source, options.repetitions,
+        distances = run_smoothmin_spmv_sssp(graph, source, options.repetitions,
                                           options.max_iterations, options.beta.value_or(32.0f));
       }
     }
