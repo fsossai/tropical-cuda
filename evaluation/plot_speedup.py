@@ -27,16 +27,16 @@ BASELINE = "cugraph"          # series everything is normalized against
 X_DIM, Z_DIM, METRIC = "graph", "solver", "kernel"
 
 # Bar order, left to right within each graph; the baseline goes last.
-SOLVER_ORDER = ["tropical_exact", "cusparse", "cugraph"]
+SOLVER_ORDER = ["minplus_spmv", "minplus_spmmop", "cugraph"]
 
-# Solvers left out of the plot; tropical_apx is approximate, so its speed is not comparable.
-EXCLUDED = {"tropical_apx"}
+# Solvers left out of the plot; softmin_spmv is approximate, so its speed is not comparable.
+EXCLUDED = {"softmin_spmv"}
 
 # Categorical slots 1 and 2 of the validated palette for the compared solvers;
 # the baseline is deliberately neutral, since it is the reference, not a result.
 COLORS = {
-    "tropical_exact": "#2a78d6",
-    "cusparse": "#eb6834",
+    "minplus_spmv": "#2a78d6",
+    "minplus_spmmop": "#eb6834",
     "cugraph": "#b4b3ac",
 }
 

@@ -1,6 +1,6 @@
 #include "deferred_timer.hpp"
+#include "minplus_spmv.cuh"
 #include "tropical_common.cuh"
-#include "tropical_exact.cuh"
 #include <timers/ScopedTimer.hpp>
 
 #include <cuda_runtime.h>
@@ -71,9 +71,9 @@ __global__ void tropical_spmv(const uint32_t* __restrict__ row_offsets,
 
 } // namespace
 
-std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t source,
-                                           uint32_t repetitions,
-                                           std::optional<uint32_t> max_iterations) {
+std::vector<float> run_minplus_spmv_sssp(const CsrGraph& graph, uint32_t source,
+                                         uint32_t repetitions,
+                                         std::optional<uint32_t> max_iterations) {
   DeferredTimer teardown("teardown");
   if (graph.vertex_count == 0 || source >= graph.vertex_count ||
       graph.row_offsets.size() != static_cast<size_t>(graph.vertex_count) + 1 ||

@@ -1,11 +1,11 @@
 #include "cugraph_solver.hpp"
-#include "cusparse_solver.cuh"
 #include "error_metrics.hpp"
 #include "graph.hpp"
 #include "graph_binary.hpp"
-#include "tropical_apx.cuh"
+#include "minplus_spmmop.cuh"
+#include "minplus_spmv.cuh"
+#include "softmin_spmv.cuh"
 #include "tropical_common.cuh"
-#include "tropical_exact.cuh"
 
 #include <timers/ScopedTimer.hpp>
 
@@ -31,7 +31,7 @@ namespace {
 struct Options {
   std::string graph_path;
   std::optional<uint32_t> source;
-  std::string solver = "tropical_exact";
+  std::string solver = "minplus_spmv";
   WeightMode weights = WeightMode::unit;
   std::optional<std::string> output_path;
   uint32_t repetitions = 1;
@@ -45,12 +45,12 @@ void print_usage(const char* program) {
             << "\n"
             << "Options:\n"
             << "  --source NODE          Source vertex; defaults to the first edge source\n"
-            << "  --solver NAME          tropical_exact (default), tropical_apx, cusparse,\n"
+            << "  --solver NAME          minplus_spmv (default), minplus_spmmop, softmin_spmv,\n"
             << "                         cugraph\n"
             << "  --weights MODE         unit (default) or weighted\n"
             << "  --runs N               Number of SSSP runs (default: 1)\n"
             << "  --max-iterations N     Maximum Bellman-Ford iterations\n"
-            << "  --beta VALUE           Positive tropical_apx approximation parameter\n"
+            << "  --beta VALUE           Positive softmin_spmv approximation parameter\n"
             << "  --output PATH          Write distances to PATH\n"
             << "  --error                Compare distances with a CPU Dijkstra reference\n"
             << "  --help                 Show this message\n";
@@ -105,8 +105,8 @@ Options parse_options(int argc, char** argv) {
       options.source = parse_uint32(require_value(), argument);
     } else if (argument == "--solver") {
       options.solver = require_value();
-      if (options.solver != "cugraph" && options.solver != "tropical_exact" &&
-          options.solver != "tropical_apx" && options.solver != "cusparse") {
+      if (options.solver != "cugraph" && options.solver != "minplus_spmv" &&
+          options.solver != "softmin_spmv" && options.solver != "minplus_spmmop") {
         throw std::runtime_error("unknown solver: " + options.solver);
       }
     } else if (argument == "--weights") {
@@ -192,8 +192,8 @@ int main(int argc, char** argv) {
     if (options.solver == "cugraph" && options.max_iterations) {
       throw std::runtime_error("--max-iterations is unsupported by cugraph");
     }
-    if (options.solver != "tropical_apx" && options.beta) {
-      throw std::runtime_error("--beta is only supported by tropical_apx");
+    if (options.solver != "softmin_spmv" && options.beta) {
+      throw std::runtime_error("--beta is only supported by softmin_spmv");
     }
 
     // Create the CUDA context up front so that no solver's timings include its one-time cost.
@@ -252,8 +252,8 @@ int main(int argc, char** argv) {
       TIMER_STOP();
     }
 
-    if (options.solver == "tropical_exact" || options.solver == "tropical_apx" ||
-        options.solver == "cusparse") {
+    if (options.solver == "minplus_spmv" || options.solver == "softmin_spmv" ||
+        options.solver == "minplus_spmmop") {
       Stopwatch sw_transpose("transpose", /*stats=*/false);
       ScopedTimer st_transpose(sw_transpose);
       graph = transpose_csr_with_cusparse(graph);
@@ -265,13 +265,14 @@ int main(int argc, char** argv) {
       ScopedTimer st("end_to_end");
       if (options.solver == "cugraph") {
         distances = run_cugraph_sssp(graph_view, source, options.repetitions);
-      } else if (options.solver == "tropical_exact") {
+      } else if (options.solver == "minplus_spmv") {
         distances =
-            run_tropical_exact_sssp(graph, source, options.repetitions, options.max_iterations);
-      } else if (options.solver == "cusparse") {
-        distances = run_cusparse_sssp(graph, source, options.repetitions, options.max_iterations);
+            run_minplus_spmv_sssp(graph, source, options.repetitions, options.max_iterations);
+      } else if (options.solver == "minplus_spmmop") {
+        distances =
+            run_minplus_spmmop_sssp(graph, source, options.repetitions, options.max_iterations);
       } else {
-        distances = run_tropical_apx_sssp(graph, source, options.repetitions,
+        distances = run_softmin_spmv_sssp(graph, source, options.repetitions,
                                           options.max_iterations, options.beta.value_or(32.0f));
       }
     }

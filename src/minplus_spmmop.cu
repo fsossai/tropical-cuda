@@ -1,4 +1,4 @@
-#include "cusparse_solver.cuh"
+#include "minplus_spmmop.cuh"
 #include "tropical_common.cuh"
 
 #include "deferred_timer.hpp"
@@ -180,8 +180,9 @@ private:
 } // namespace
 
 // Iterate cuSPARSE min-plus relaxations over incoming CSR rows until distances stop changing.
-std::vector<float> run_cusparse_sssp(const CsrGraph& graph, uint32_t source, uint32_t repetitions,
-                                     std::optional<uint32_t> max_iterations) {
+std::vector<float> run_minplus_spmmop_sssp(const CsrGraph& graph, uint32_t source,
+                                           uint32_t repetitions,
+                                           std::optional<uint32_t> max_iterations) {
   DeferredTimer teardown("teardown");
   if (graph.vertex_count == 0 || source >= graph.vertex_count || repetitions == 0 ||
       graph.row_offsets.size() != static_cast<size_t>(graph.vertex_count) + 1 ||

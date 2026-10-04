@@ -8,9 +8,9 @@
   },
   "space": {
     "solver": [
-      "tropical_exact",
-      "tropical_apx",
-      "cusparse",
+      "minplus_spmv",
+      "softmin_spmv",
+      "minplus_spmmop",
       "cugraph"
     ],
     "graph": [

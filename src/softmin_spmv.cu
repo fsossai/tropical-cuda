@@ -1,4 +1,4 @@
-#include "tropical_apx.cuh"
+#include "softmin_spmv.cuh"
 #include "tropical_common.cuh"
 
 #include "deferred_timer.hpp"
@@ -157,7 +157,7 @@ __global__ void decode_and_relax(float beta, float shift, const float* __restric
 } // namespace
 
 // Run the approximate backend as a windowed Bellman-Ford that uses cuSPARSE SpMV for each step.
-std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
+std::vector<float> run_softmin_spmv_sssp(const CsrGraph& graph, uint32_t source,
                                          uint32_t repetitions,
                                          std::optional<uint32_t> max_iterations, float beta) {
   DeferredTimer teardown("teardown");

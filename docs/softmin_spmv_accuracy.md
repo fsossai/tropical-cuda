@@ -1,12 +1,12 @@
-# Accuracy of `tropical_apx`
+# Accuracy of `softmin_spmv`
 
-`tropical_apx` computes shortest-path distances with cuSPARSE's ordinary SpMV in the exponential domain, so its distances are approximate (see [Floating-Point Considerations](floating_point.md)).
+`softmin_spmv` computes shortest-path distances with cuSPARSE's ordinary SpMV in the exponential domain, so its distances are approximate (see [Floating-Point Considerations](floating_point.md)).
 This note measures how far they are from the exact ones, how the parameter $\beta$ affects them, and how to recover exact distances afterwards.
 All graphs are unweighted, so every exact distance is an integer number of hops.
 
 ## Measuring the Error
 
-With $d_v$ the exact distance of vertex $v$ and $\tilde d_v$ the one reported by `tropical_apx`, the relative error is
+With $d_v$ the exact distance of vertex $v$ and $\tilde d_v$ the one reported by `softmin_spmv`, the relative error is
 
 $$
 e_v = \frac{d_v - \tilde d_v}{d_v},
@@ -29,9 +29,9 @@ This example is roadNet-CA at $\beta = 8$.
 
 ## Method
 
-Each graph was solved from its benchmark source with `tropical_exact`, which gives the reference distances and its iteration count.
-`tropical_apx` was then run once per $\beta \in \{2, 4, 8, 16, 32\}$, capped at three times the exact iteration count plus 100.
-A run that hits the cap has drifted instead of converging. The cap is generous: a converging run needs about as many iterations as `tropical_exact`, at most 22 against 8 here, while a drifting run never stops on its own.
+Each graph was solved from its benchmark source with `minplus_spmv`, which gives the reference distances and its iteration count.
+`softmin_spmv` was then run once per $\beta \in \{2, 4, 8, 16, 32\}$, capped at three times the exact iteration count plus 100.
+A run that hits the cap has drifted instead of converging. The cap is generous: a converging run needs about as many iterations as `minplus_spmv`, at most 22 against 8 here, while a drifting run never stops on its own.
 amazon0601 and the four web graphs were measured on the sources they had before the [source selection](source_selection.md) was refined.
 
 ## Convergence
@@ -52,18 +52,18 @@ The rule $\beta > \ln(\text{max in-degree})$ suggested by the bound is too pessi
 
 ## Why $\beta = 32$ by Default
 
-`tropical_apx` uses $\beta = 32$ unless `--beta` is given, for three reasons:
+`softmin_spmv` uses $\beta = 32$ unless `--beta` is given, for three reasons:
 
 - **It converges on every graph.** All graphs converge from $\beta = 8$ up, so $\beta = 32$ is well clear of the drift seen at $\beta = 2$ and $4$.
 - **It is four times more accurate than $\beta = 8$.** The error shrinks as $1/\beta$, and at $\beta = 32$ every short-path graph is exact or nearly so after rounding up.
-- **It costs nothing.** A converged run takes as many iterations as `tropical_exact` whatever $\beta$ is, so the larger value adds no work on these graphs.
+- **It costs nothing.** A converged run takes as many iterations as `minplus_spmv` whatever $\beta$ is, so the larger value adds no work on these graphs.
 
 The limit is the window: the solver requires $\beta \le 87.3 / w_{\max}$, where $w_{\max}$ is the heaviest edge weight, so $\beta = 32$ only accepts graphs whose heaviest edge is at most about 2.7.
 All benchmark graphs have unit weights; a weighted graph needs a smaller `--beta`.
 
 ## Error of Converged Runs
 
-Because every exact distance is an integer, `tropical_apx` rounds its distances up as its last step (see [Recovering Exact Distances](#recovering-exact-distances)).
+Because every exact distance is an integer, `softmin_spmv` rounds its distances up as its last step (see [Recovering Exact Distances](#recovering-exact-distances)).
 The table reports the share of vertices with the correct distance and the mean and 99th percentile of $e_v$ after that step.
 It was measured by rounding to the nearest integer, so rounding up only improves on it.
 
@@ -83,7 +83,7 @@ It was measured by rounding to the nearest integer, so rounding up only improves
 | web-NotreDame | 99.5% | 0.03% / 0% | 100% | 0% / 0% |
 | web-BerkStan | 55.1% | 2.62% / 10.0% | 99.6% | 0.02% / 0% |
 
-- Every converged run takes as many iterations as `tropical_exact`, and the error halves each time $\beta$ doubles.
+- Every converged run takes as many iterations as `minplus_spmv`, and the error halves each time $\beta$ doubles.
 - At $\beta = 32$, every short-path graph is exact or nearly so. On the road networks, the error accumulates along paths of hundreds of hops, so few distances are correct even at $\beta = 32$.
 - At $\beta = 8$, a distance that rounds the wrong way is off by a whole unit, which is 10% to 25% of a distance of 4 to 10. This is why the 99th percentile is high on the short-path graphs even when most distances are correct.
 - No converged run ever overestimated a distance or reached an unreachable vertex, even when compared without any tolerance.
@@ -103,7 +103,7 @@ No such case was observed.
 When every weight is an integer, so is every exact distance, and the approximate distances can be turned into integers.
 
 - Rounding to the nearest integer recovers $d_v$ only when the error is below 0.5.
-- Rounding up recovers it whenever the error is below 1, and since $\tilde d_v \le d_v$, it can never overshoot. `tropical_apx` therefore rounds its distances up as its last step whenever all weights are integers.
+- Rounding up recovers it whenever the error is below 1, and since $\tilde d_v \le d_v$, it can never overshoot. `softmin_spmv` therefore rounds its distances up as its last step whenever all weights are integers.
 
 The two were compared at $\beta = 8$. Here the four web graphs used their current sources and amazon0601 its previous one.
 
@@ -120,7 +120,7 @@ Where rounding up is not enough, a larger $\beta$ is the simplest remedy. A more
 
 ## Summary
 
-- **$\beta$ must be at least 8.** At $\beta = 2$, 10 of the 13 graphs drift and never converge, and at $\beta = 4$ five still do. From $\beta = 8$ up, every graph converges in as many iterations as `tropical_exact`.
+- **$\beta$ must be at least 8.** At $\beta = 2$, 10 of the 13 graphs drift and never converge, and at $\beta = 4$ five still do. From $\beta = 8$ up, every graph converges in as many iterations as `minplus_spmv`.
 - **The distances are never too long.** No converged run overestimated a distance, which matches the argument above, and the error shrinks as $1/\beta$.
 - **At the default $\beta = 32$, short-path graphs are effectively exact.** On the ten graphs other than the road networks, 99.6% to 100% of the distances are correct after rounding, with a mean error of at most 0.02%.
 - **Long-path graphs stay approximate.** On the road networks, only 8% to 24% of the distances are correct at $\beta = 32$, because the error accumulates over hundreds of hops, but the error stays small: 0.14% to 0.21% on average and at most 0.5% at the 99th percentile.

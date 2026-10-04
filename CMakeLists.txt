@@ -16,9 +16,9 @@ add_executable(tropical_sssp
   src/graph.cpp
   src/graph_binary.cpp
   src/tropical_common.cu
-  src/tropical_exact.cu
-  src/tropical_apx.cu
-  src/cusparse_solver.cu
+  src/minplus_spmv.cu
+  src/softmin_spmv.cu
+  src/minplus_spmmop.cu
   src/error_metrics.cpp
 )
 set_target_properties(tropical_sssp PROPERTIES OUTPUT_NAME sssp)
