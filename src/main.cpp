@@ -259,7 +259,7 @@ int main(int argc, char** argv) {
       } else {
         distances =
             run_tropical_apx_sssp(graph, source, options.repetitions, options.max_iterations,
-                                  options.beta.value_or(2.0f));
+                                  options.beta.value_or(8.0f));
       }
     }
 

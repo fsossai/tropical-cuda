@@ -5,10 +5,10 @@
 
 #include <cuda_runtime.h>
 
+#include <iostream>
 #include <limits>
 #include <math.h>
 #include <stddef.h>
-#include <iostream>
 #include <stdexcept>
 #include <stdint.h>
 #include <vector>
@@ -113,7 +113,9 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
 
   const uint32_t iterations = max_iterations.value_or(graph.vertex_count - 1);
   constexpr uint32_t threads_per_block = 256;
-  const uint32_t blocks = (graph.vertex_count + threads_per_block - 1) / threads_per_block;
+  constexpr uint32_t wave_blocks = 56 * (2048 / threads_per_block);
+  const uint32_t desired_blocks = (graph.vertex_count + threads_per_block - 1) / threads_per_block;
+  const uint32_t blocks = ((desired_blocks + wave_blocks - 1) / wave_blocks) * wave_blocks;
 
   float* current = device_a.data();
   float* next = device_b.data();
