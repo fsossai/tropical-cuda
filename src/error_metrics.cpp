@@ -106,7 +106,9 @@ void print_error_metrics(const std::vector<float>& reference, const std::vector<
 
     const double exact = reference[vertex];
     const double relative = (exact - distances[vertex]) / exact;
-    const double rounded = std::round(distances[vertex]);
+    // The approximation only underestimates, so rounding up recovers any error below one unit.
+    // The small offset keeps float noise just above an integer from rounding up a full unit.
+    const double rounded = std::ceil(distances[vertex] - 1e-3);
     relative_errors.push_back(relative);
     rounded_errors.push_back((exact - rounded) / exact);
     overestimates += relative < -1e-6 ? 1 : 0;
@@ -125,11 +127,11 @@ void print_error_metrics(const std::vector<float>& reference, const std::vector<
   // Rounding only recovers exact distances when every distance is an integer.
   if (integer_weights && compared != 0) {
     const ErrorSummary rounded = summarize(rounded_errors);
-    std::cout << "rounded_exact: "
+    std::cout << "rounded_up_exact: "
               << 100.0 * static_cast<double>(rounded_exact) / static_cast<double>(compared)
               << " %\n"
-              << "rounded_rel_error_mean: " << rounded.mean * 100.0 << " %\n"
-              << "rounded_rel_error_p99: " << rounded.p99 * 100.0 << " %\n";
+              << "rounded_up_rel_error_mean: " << rounded.mean * 100.0 << " %\n"
+              << "rounded_up_rel_error_p99: " << rounded.p99 * 100.0 << " %\n";
   }
 
   std::cout << std::defaultfloat;
