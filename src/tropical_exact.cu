@@ -113,9 +113,19 @@ std::vector<float> run_tropical_exact_sssp(const CsrGraph& graph, uint32_t sourc
 
   const uint32_t iterations = max_iterations.value_or(graph.vertex_count - 1);
   constexpr uint32_t threads_per_block = 256;
-  constexpr uint32_t wave_blocks = 56 * (2048 / threads_per_block);
+  int device = 0;
+  cudaDeviceProp device_properties{};
+  int blocks_per_sm = 0;
+  CHECK_CUDA(cudaGetDevice(&device));
+  CHECK_CUDA(cudaGetDeviceProperties(&device_properties, device));
+  CHECK_CUDA(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&blocks_per_sm, tropical_spmv,
+                                                           threads_per_block, 0));
+  // Let's make sure that each wave of blocks has the best occupancy. We force the grid size to be a
+  // multiple of the size of the wave.
+  const uint32_t wave_size = static_cast<uint32_t>(device_properties.multiProcessorCount) *
+                             static_cast<uint32_t>(blocks_per_sm);
   const uint32_t desired_blocks = (graph.vertex_count + threads_per_block - 1) / threads_per_block;
-  const uint32_t blocks = ((desired_blocks + wave_blocks - 1) / wave_blocks) * wave_blocks;
+  const uint32_t blocks = ((desired_blocks + wave_size - 1) / wave_size) * wave_size;
 
   float* current = device_a.data();
   float* next = device_b.data();
