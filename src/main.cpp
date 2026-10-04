@@ -1,5 +1,6 @@
 #include "cugraph_solver.hpp"
 #include "cusparse_solver.cuh"
+#include "error_metrics.hpp"
 #include "graph.hpp"
 #include "graph_binary.hpp"
 #include "tropical_apx.cuh"
@@ -36,6 +37,7 @@ struct Options {
   uint32_t repetitions = 1;
   std::optional<uint32_t> max_iterations;
   std::optional<float> beta;
+  bool error_metrics = false;
 };
 
 void print_usage(const char* program) {
@@ -50,6 +52,7 @@ void print_usage(const char* program) {
             << "  --max-iterations N     Maximum Bellman-Ford iterations\n"
             << "  --beta VALUE           Positive tropical_apx approximation parameter\n"
             << "  --output PATH          Write distances to PATH\n"
+            << "  --error                Compare distances with a CPU Dijkstra reference\n"
             << "  --help                 Show this message\n";
 }
 
@@ -126,6 +129,8 @@ Options parse_options(int argc, char** argv) {
       options.beta = parse_positive_float(require_value(), argument);
     } else if (argument == "--output") {
       options.output_path = std::string(require_value());
+    } else if (argument == "--error") {
+      options.error_metrics = true;
     } else {
       throw std::runtime_error("unknown option: " + std::string(argument));
     }
@@ -238,6 +243,18 @@ int main(int argc, char** argv) {
               << "source  : " << source << '\n'
               << "solver  : " << options.solver << '\n';
 
+    // The reference uses the outgoing rows, so it must run before the tropical solvers transpose.
+    std::vector<float> reference;
+    bool integer_weights = true;
+    if (options.error_metrics) {
+      std::cout << "computing the reference distances with Dijkstra\n";
+      TIMER_START("reference");
+      reference = dijkstra_sssp(graph_view, source);
+      integer_weights = std::all_of(graph_view.weights, graph_view.weights + graph_view.edge_count,
+                                    [](float weight) { return std::nearbyint(weight) == weight; });
+      TIMER_STOP();
+    }
+
     if (options.solver == "tropical_exact" || options.solver == "tropical_apx" ||
         options.solver == "cusparse") {
       Stopwatch sw_transpose("transpose", /*stats=*/false);
@@ -257,9 +274,8 @@ int main(int argc, char** argv) {
       } else if (options.solver == "cusparse") {
         distances = run_cusparse_sssp(graph, source, options.repetitions, options.max_iterations);
       } else {
-        distances =
-            run_tropical_apx_sssp(graph, source, options.repetitions, options.max_iterations,
-                                  options.beta.value_or(8.0f));
+        distances = run_tropical_apx_sssp(graph, source, options.repetitions,
+                                          options.max_iterations, options.beta.value_or(8.0f));
       }
     }
 
@@ -271,6 +287,11 @@ int main(int argc, char** argv) {
     const auto reachable = static_cast<uint32_t>(std::count_if(
         distances.begin(), distances.end(), [](float distance) { return !std::isinf(distance); }));
     std::cout << "reachable: " << reachable << '\n';
+
+    if (options.error_metrics) {
+      print_error_metrics(reference, distances, integer_weights);
+    }
+
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "error: " << error.what() << '\n';
