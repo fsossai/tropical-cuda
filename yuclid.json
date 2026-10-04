@@ -12,49 +12,49 @@
         "name": "amazon0601",
         "value": "data/amazon0601.csrbin",
         "attrs": {
-          "source": 347834
+          "source": 57330
         }
       },
       {
         "name": "email_euall",
         "value": "data/email-EuAll.csrbin",
         "attrs": {
-          "source": 70445
+          "source": 75795
         }
       },
       {
         "name": "roadnet_ca",
         "value": "data/roadNet-CA.csrbin",
         "attrs": {
-          "source": 1253170
+          "source": 982529
         }
       },
       {
         "name": "roadnet_pa",
         "value": "data/roadNet-PA.csrbin",
         "attrs": {
-          "source": 93526
+          "source": 319360
         }
       },
       {
         "name": "roadnet_tx",
         "value": "data/roadNet-TX.csrbin",
         "attrs": {
-          "source": 198933
+          "source": 900309
         }
       },
       {
         "name": "livejournal",
         "value": "data/soc-LiveJournal1.csrbin",
         "attrs": {
-          "source": 4774828
+          "source": 3487746
         }
       },
       {
         "name": "soc_pokec_relationships",
         "value": "data/soc-pokec-relationships.csrbin",
         "attrs": {
-          "source": 1193707
+          "source": 1236350
         }
       },
       {
@@ -68,35 +68,35 @@
         "name": "web_berkstan",
         "value": "data/web-BerkStan.csrbin",
         "attrs": {
-          "source": 141889
+          "source": 598568
         }
       },
       {
         "name": "web_google",
         "value": "data/web-Google.csrbin",
         "attrs": {
-          "source": 160322
+          "source": 461148
         }
       },
       {
         "name": "web_notredame",
         "value": "data/web-NotreDame.csrbin",
         "attrs": {
-          "source": 253644
+          "source": 251608
         }
       },
       {
         "name": "web_stanford",
         "value": "data/web-Stanford.csrbin",
         "attrs": {
-          "source": 118959
+          "source": 7039
         }
       },
       {
         "name": "wiki_talk",
         "value": "data/wiki-Talk.csrbin",
         "attrs": {
-          "source": 3215
+          "source": 2161385
         }
       }
     ],
