@@ -7,6 +7,12 @@
     ]
   },
   "space": {
+    "solver": [
+      "tropical_exact",
+      "tropical_apx",
+      "cusparse",
+      "cugraph"
+    ],
     "graph": [
       {
         "name": "amazon0601",
@@ -99,18 +105,30 @@
           "source": 2161385
         }
       }
-    ],
-    "solver": [
-      "tropical_exact",
-      "tropical_apx",
-      "cusparse",
-      "cugraph"
     ]
   },
   "trials": [
     {
-      "command": "${yuclid.workspace}/build/sssp ${yuclid.graph} --source ${yuclid.graph.source} --solver ${yuclid.solver} --runs ${yuclid.repeat} --error",
-      "repeats": true
+      "command": "${yuclid.workspace}/build/sssp ${yuclid.graph} --source ${yuclid.graph.source} --solver ${yuclid.solver} --runs 1 --error",
+      "repeats": false,
+      "metrics": [
+        "setup",
+        "download",
+        "kernel",
+        "end_to_end",
+        "lost",
+        "spurious",
+        "overestimates",
+        "rel_error_mean",
+        "rel_error_p99"
+      ]
+    },
+    {
+      "command": "${yuclid.workspace}/build/sssp ${yuclid.graph} --source ${yuclid.graph.source} --solver ${yuclid.solver} --runs ${yuclid.repeat}",
+      "repeats": true,
+      "metrics": [
+        "kernel"
+      ]
     }
   ],
   "metrics": {
