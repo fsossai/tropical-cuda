@@ -1,7 +1,6 @@
 # Tropical Shortest Paths with CUDA
 
-
-Did you know that you can solve the single-source shortest path (SSSP) problem via matrix-vector multiplication?
+Did you know that you can solve the single-source shortest path (SSSP) problem via [a matrix-vector multiplication](https://en.wikipedia.org/wiki/Min-plus_matrix_multiplication)?
 
 This project implements an algorithm that I will refer to as "tropical" and compare it to cuGraph's implementation.
 The tropical algorithm requires a variation of SpMV that cuSPARSE's standard SpMV does not provide (see below).
@@ -10,7 +9,7 @@ Here, I want to answer a few practical questions:
 
 - **Q1**: How does a tropical SSSP solver compare with the cuGraph's SSSP solver?
 - **Q2**: Can a tropical SSSP solver be implemented with cuSPARSE's custom-operator SpMM (`cusparseSpMMOp`)?
-- **Q3**: Can a tropical SSSP solver be implemented by reusing the standard routines of libraries such as cuSPARSE, without a custom tropical matrix multiply?
+- **Q3**: Can a tropical SSSP solver be implemented by reusing libraries like cuSPARSE, without a custom matrix multiply?
 
 I evaluate these questions on graphs from the [SNAP dataset collection](https://snap.stanford.edu/data/).
 
@@ -56,12 +55,13 @@ $$
 Here a missing edge has cost $\infty$ and $w_{ii} = 0$ for every vertex $i$.
 Repeating the product propagates distances through the graph. The idea is inspired by Michael Garland's paper, *Sparse matrix computations on manycore GPUs*.
 
-### An Approximate Formulation (`smoothmin_spmv`)
-
 Because a graph's adjacency matrix is sparse, this operation is an SpMV, but cuSPARSE's standard SpMV supports only ordinary arithmetic rather than the min-plus variant.
 Its preview `cusparseSpMMOp` API accepts custom operators, which the `minplus_spmmop` backend uses to compute the exact min-plus product.
+
+### An Approximate Formulation (`smoothmin_spmv`)
+
 One alternative is to transform the weights and distances so that conventional arithmetic SpMV approximates the tropical product.
-For a positive parameter $\beta$, define the forward transformation and its inverse as:
+For a positive parameter $\beta$, define the forward [LogSumExp](https://en.wikipedia.org/wiki/LogSumExp) transformation and its inverse as:
 
 $$
 T_\beta(x) = e^{-\beta x}
@@ -81,7 +81,7 @@ $$
 \min(x, y) = \lim_{\beta \to \infty} T_\beta^{-1}\left(T_\beta(x) + T_\beta(y)\right).
 $$
 
-As a result, the expression is a soft-min, and it approaches the true minimum as $\beta$ grows.
+As a result, the expression is a [smooth min](https://en.wikipedia.org/wiki/Smooth_maximum), and it approaches the true minimum as $\beta$ grows.
 Unfortunately, finite-precision arithmetic makes this transformation numerically fragile, as explained in [Floating-Point Considerations](docs/floating_point.md).
 
 ## Solvers
@@ -191,3 +191,4 @@ The `cugraph` backend requires a separate [RAPIDS libcugraph installation](https
 
 - Michael Garland. "Sparse matrix computations on manycore GPU's." *Proceedings of the 45th Annual Design Automation Conference (DAC)*, pp. 2–6, 2008.
 - Andrew Davidson, Sean Baxter, Michael Garland, and John D. Owens. "Work-efficient parallel GPU methods for single-source shortest paths." *2014 IEEE 28th International Parallel and Distributed Processing Symposium (IPDPS)*, pp. 349–359, IEEE, 2014.
+- Uri Zwick. "All pairs shortest paths using bridging sets and rectangular matrix multiplication." *Journal of the ACM (JACM)*, 49(3), pp. 289–317, ACM New York, NY, USA, 2002.
