@@ -191,6 +191,12 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
                                 std::to_string(exponent_budget / max_weight));
   }
 
+  // With integer weights every exact distance is an integer, and since the soft minimum only
+  // underestimates, rounding up recovers the exact distance whenever the error is below one unit.
+  const bool integer_weights =
+      std::all_of(graph.weights.begin(), graph.weights.end(),
+                  [](float weight) { return nearbyintf(weight) == weight; });
+
   const auto vertex_bytes = static_cast<size_t>(graph.vertex_count) * sizeof(float);
   const auto offset_bytes = graph.row_offsets.size() * sizeof(uint32_t);
   const auto edge_bytes = graph.edge_count * sizeof(uint32_t);
@@ -273,6 +279,14 @@ std::vector<float> run_tropical_apx_sssp(const CsrGraph& graph, uint32_t source,
   TIMER_START("download");
   CHECK_CUDA(
       cudaMemcpy(result.data(), device_distances.data(), vertex_bytes, cudaMemcpyDeviceToHost));
+
+  // The small offset keeps float noise just above an integer from rounding up a whole unit.
+  if (integer_weights) {
+    for (float& distance : result) {
+      distance = ceilf(distance - 1e-3f);
+    }
+  }
+
   TIMER_STOP();
   teardown.start();
 

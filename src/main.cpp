@@ -245,13 +245,10 @@ int main(int argc, char** argv) {
 
     // The reference uses the outgoing rows, so it must run before the tropical solvers transpose.
     std::vector<float> reference;
-    bool integer_weights = true;
     if (options.error_metrics) {
       std::cout << "computing the reference distances with Dijkstra\n";
       TIMER_START("reference");
       reference = dijkstra_sssp(graph_view, source);
-      integer_weights = std::all_of(graph_view.weights, graph_view.weights + graph_view.edge_count,
-                                    [](float weight) { return std::nearbyint(weight) == weight; });
       TIMER_STOP();
     }
 
@@ -275,7 +272,7 @@ int main(int argc, char** argv) {
         distances = run_cusparse_sssp(graph, source, options.repetitions, options.max_iterations);
       } else {
         distances = run_tropical_apx_sssp(graph, source, options.repetitions,
-                                          options.max_iterations, options.beta.value_or(8.0f));
+                                          options.max_iterations, options.beta.value_or(32.0f));
       }
     }
 
@@ -289,7 +286,7 @@ int main(int argc, char** argv) {
     std::cout << "reachable: " << reachable << '\n';
 
     if (options.error_metrics) {
-      print_error_metrics(reference, distances, integer_weights);
+      print_error_metrics(reference, distances);
     }
 
     return 0;

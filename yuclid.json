@@ -109,7 +109,7 @@
   },
   "trials": [
     {
-      "command": "${yuclid.workspace}/build/sssp ${yuclid.graph} --source ${yuclid.graph.source} --solver ${yuclid.solver} --runs ${yuclid.repeat}",
+      "command": "${yuclid.workspace}/build/sssp ${yuclid.graph} --source ${yuclid.graph.source} --solver ${yuclid.solver} --runs ${yuclid.repeat} --error",
       "repeats": true
     }
   ],
@@ -117,7 +117,12 @@
     "setup": "grep -E '^\\[scoped_timer\\] setup:' ${yuclid.@}.out | awk '{print $3}'",
     "kernel": "grep -E '^\\[scoped_timer\\] kernel:' ${yuclid.@}.out | awk '{print $3}'",
     "download": "grep -E '^\\[scoped_timer\\] download:' ${yuclid.@}.out | awk '{print $3}'",
-    "end_to_end": "grep -E '^\\[scoped_timer\\] end_to_end:' ${yuclid.@}.out | awk '{print $3}'"
+    "end_to_end": "grep -E '^\\[scoped_timer\\] end_to_end:' ${yuclid.@}.out | awk '{print $3}'",
+    "lost": "grep -E '^lost:' ${yuclid.@}.out | awk '{print $2}'",
+    "spurious": "grep -E '^spurious:' ${yuclid.@}.out | awk '{print $2}'",
+    "overestimates": "grep -E '^overestimates:' ${yuclid.@}.out | awk '{print $2}'",
+    "rel_error_mean": "grep -E '^rel_error_mean:' ${yuclid.@}.out | awk '{print $2}'",
+    "rel_error_p99": "grep -E '^rel_error_p99:' ${yuclid.@}.out | awk '{print $2}'"
   },
   "order": [
     "graph",
