@@ -2,6 +2,8 @@
 
 Did you know that you can solve the single-source shortest path (SSSP) problem via [a matrix-vector multiplication](https://en.wikipedia.org/wiki/Min-plus_matrix_multiplication)?
 
+Many algorithms outside linear algebra are known to have a matrix-multiplication formulation.
+With the advent of Tensor Cores and other dedicated hardware for linear algebra, there has been growing interest in exploiting such formulations to derive efficient implementations of these algorithms.
 This project implements an algorithm that I will refer to as "tropical" and compare it to cuGraph's implementation.
 The tropical algorithm requires a variation of SpMV that cuSPARSE's standard SpMV does not provide.
 
@@ -15,10 +17,9 @@ I evaluate these questions on graphs from the [SNAP dataset collection](https://
 
 ## Tropical SSSP
 
-With the advent of Tensor Cores and other dedicated hardware for linear algebra, more and more algorithms have been reformulated in terms of matrix multiplication.
 The following is a well-known formulation based on [tropical algebra](https://en.wikipedia.org/wiki/Tropical_semiring) of the [Bellman-Ford algorithm](https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm).
 
-### The Exact Formulation (`minplus_spmv`, `minplus_spmmop`)
+### Exact Formulation (`minplus_spmv`, `minplus_spmmop`)
 
 A matrix-vector product computes each output element by combining a matrix row with an input vector. In ordinary arithmetic and in a generic algebraic form, respectively, it is:
 
@@ -58,7 +59,7 @@ Repeating the product propagates distances through the graph. The idea is inspir
 Because a graph's adjacency matrix is sparse, this operation is an SpMV, but cuSPARSE's standard SpMV supports only ordinary arithmetic rather than the min-plus variant.
 Its preview `cusparseSpMMOp` API accepts custom operators, which the `minplus_spmmop` backend uses to compute the exact min-plus product.
 
-### An Approximate Formulation (`smoothmin_spmv`)
+### Approximate Formulation (`smoothmin_spmv`)
 
 One alternative is to transform the weights and distances so that conventional arithmetic SpMV approximates the tropical product.
 For a positive parameter $\beta$, define the forward [LogSumExp](https://en.wikipedia.org/wiki/LogSumExp) transformation and its inverse as:
@@ -90,33 +91,6 @@ Unfortunately, finite-precision arithmetic makes this transformation numerically
 - `minplus_spmv`: a hand-written CUDA kernel that computes the min-plus SpMV.
 - `minplus_spmmop`: the same exact product, computed by cuSPARSE's `cusparseSpMMOp` with min-plus operators compiled at run time.
 - `smoothmin_spmv`: approximates the min-plus product with a [LogSumExp](https://en.wikipedia.org/wiki/LogSumExp) transformation and cuSPARSE's ordinary SpMV.
-
-## Quick start
-
-Build the project:
-
-```sh
-make
-```
-
-Download the SNAP inputs and convert them to memory-mappable CSR binaries:
-
-```sh
-make inputs
-make inputs-large    # if you feel courageous
-```
-
-Run the hand-written tropical solver:
-
-```sh
-./build/sssp data/web-Google.csrbin --solver minplus_spmv --runs 1
-```
-
-Run cuGraph on the same input:
-
-```sh
-./build/sssp data/web-Google.csrbin --solver cugraph --runs 1
-```
 
 ## Evaluation
 
@@ -187,9 +161,36 @@ The plot below compares the `kernel` speedup of every solver over cuGraph, shown
   <img src="evaluation/speedup_all.svg" alt="Kernel speedup of every solver over cuGraph per graph" width="700">
 </p>
 
+## Quick start
+
+Build the project:
+
+```sha
+make
+```
+
+Download the SNAP inputs and convert them to memory-mappable CSR binaries:
+
+```sh
+make inputs
+make inputs-large    # if you feel courageous
+```
+
+Run the hand-written tropical solver:
+
+```sh
+./build/sssp data/web-Google.csrbin --solver minplus_spmv --runs 1
+```
+
+Run cuGraph on the same input:
+
+```sh
+./build/sssp data/web-Google.csrbin --solver cugraph --runs 1
+```
+
 ## Dependencies
 
-The `cugraph` backend requires a separate [RAPIDS libcugraph installation](https://docs.rapids.ai/api/cugraph/legacy/installation/getting_cugraph/). CMake enables it when it finds `cugraph::cugraph_c`.
+The `cugraph` backend requires a separate [RAPIDS libcugraph installation](https://docs.rapids.ai/api/cugraph/legacy/installation/getting_cugraph/).
 
 ## References
 
